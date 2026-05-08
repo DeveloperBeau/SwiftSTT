@@ -22,6 +22,18 @@ struct EnergyVADTests {
 
     // MARK: - Tests
 
+    @Test("Empty chunk preserves current speech state")
+    func emptyChunkPreservesState() async {
+        let vad = EnergyVAD(warmupFrames: 0)
+        let empty = AudioChunk(samples: [], sampleRate: 16_000, timestamp: 0)
+        let initial = await vad.isSpeech(chunk: empty)
+        #expect(initial == false)
+        // After a tone, state should be true; an empty chunk leaves it true.
+        _ = await vad.isSpeech(chunk: Self.tone(amplitude: 0.5))
+        let after = await vad.isSpeech(chunk: empty)
+        #expect(after == true)
+    }
+
     @Test("Pure silence is never speech")
     func silenceNeverSpeech() async {
         let vad = EnergyVAD(warmupFrames: 0)
