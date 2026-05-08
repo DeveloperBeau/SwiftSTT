@@ -46,8 +46,7 @@ import SwiftWhisperCore
 /// ```
 public actor AVAudioCapture: AudioCapturer {
 
-    /// Async stream of resampled audio chunks. Stable for the lifetime of this
-    /// actor; consumers can `for await` it before ``startCapture()`` returns.
+    /// Async stream of resampled audio chunks.
     public nonisolated let audioStream: AsyncStream<AudioChunk>
 
     private nonisolated let continuation: AsyncStream<AudioChunk>.Continuation
@@ -225,31 +224,15 @@ public actor AVAudioCapture: AudioCapturer {
 
 // MARK: - CaptureBox
 
-/// Holds non-`Sendable` AVFoundation references behind a `Sendable` boundary.
-///
-/// `AVAudioEngine`, `AVAudioConverter`, and `AVAudioFormat` are not marked
-/// `Sendable` upstream, so any wrapper that needs to cross an actor boundary
-/// has to make the safety claim manually. We use `@unchecked Sendable` here
-/// rather than `Mutex` for two reasons:
-///
-/// - The mutable bits (`converter`, `outputFormat`, `tapInstalled`) are written
-///   exactly once each, inside `startCapture()` on the actor, *before* the tap
-///   is installed. After that they are read-only from both the actor and the
-///   real-time audio thread, which is data-race free.
-/// - `AVAudioEngine` is documented as thread-safe to call from any thread, so
-///   the engine reference itself does not need extra protection.
-///
-/// If Apple ever marks these types `Sendable`, the `@unchecked` annotation can
-/// drop and the box can become a regular value type.
+/// Wraps non-`Sendable` AVFoundation refs. Mutable fields are written once on
+/// the actor before the tap installs, then read-only from the audio thread.
 private final class CaptureBox: @unchecked Sendable {
     let engine = AVAudioEngine()
     var converter: AVAudioConverter?
     var outputFormat: AVAudioFormat?
     var tapInstalled = false
 
-    /// Resamples a single capture buffer to the target rate as a contiguous
-    /// `[Float]`. Returns `nil` on conversion failure rather than throwing,
-    /// because the tap callback can't propagate Swift errors.
+    /// Returns `nil` on failure because the tap callback can't propagate Swift errors.
     func convert(
         buffer: AVAudioPCMBuffer,
         sourceRate: Double,
@@ -282,7 +265,6 @@ private final class CaptureBox: @unchecked Sendable {
         return Array(UnsafeBufferPointer(start: data, count: count))
     }
 
-    /// Removes any tap and stops the engine. Safe to call when nothing is running.
     func teardown() {
         if tapInstalled {
             engine.inputNode.removeTap(onBus: 0)

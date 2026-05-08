@@ -29,11 +29,7 @@ import Foundation
 /// will eventually move those into a per-instance scratch area, but the current
 /// shape keeps the code simple.
 ///
-/// ## Thread safety
-///
-/// The DFT setup is safe for serial use from a single owner but is not
-/// `Sendable` upstream, so this struct is not `Sendable` either. Hold it as
-/// actor-isolated state (``MelSpectrogram`` does) and callers stay safe.
+/// Not `Sendable`; hold as actor-isolated state (``MelSpectrogram`` does).
 public struct FFTProcessor {
 
     /// Length of the input frame in samples. 25 ms at 16 kHz.
