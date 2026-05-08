@@ -2,15 +2,49 @@ import Accelerate
 import Foundation
 import SwiftWhisperCore
 
-/// Mel-scale log-power spectrogram computed in fixed-rate frames.
+/// Streaming mel-scale log-power spectrogram, Whisper-compatible.
 ///
-/// Output layout in `MelSpectrogramResult.frames`: row-major `[nMels x nFrames]`
-/// (mel-major). Whisper-style normalization is applied:
-/// `out = (max(log_mel, log_mel.max() - 8.0) + 4.0) / 4.0`, clamped to `(-1, 1]`.
+/// This actor turns a stream of arbitrary-length ``AudioChunk`` values into the
+/// log-mel features Whisper's encoder consumes. The implementation is split
+/// into four steps that run for every 400-sample frame:
+///
+/// 1. Hann-window the frame and run an FFT through ``FFTProcessor``.
+/// 2. Multiply the resulting power spectrum by an 80-band mel filterbank using
+///    a single `vDSP_mmul` call.
+/// 3. Take `log10` with a `1e-10` floor to avoid `-inf` on silence.
+/// 4. After all frames in the chunk are computed, apply Whisper's normalisation
+///    `out = (max(log_mel, log_mel.max() - 8.0) + 4.0) / 4.0`. The output range
+///    is always exactly 2.0 wide regardless of input loudness.
+///
+/// ## Carry-over
+///
+/// Audio chunks usually don't divide evenly into 400-sample frames at a
+/// 160-sample hop. Anything left over at the end of one chunk is prepended to
+/// the next chunk's samples so no audio is lost at chunk boundaries. Use
+/// ``reset()`` after a stream restart to drop the carry-over buffer.
+///
+/// ## Output layout
+///
+/// ``MelSpectrogramResult/frames`` is row-major `[nMels x nFrames]`, matching
+/// the layout the Core ML encoder expects. To read mel band `m` at frame `t`,
+/// use `frames[m * nFrames + t]`.
+///
+/// ## Filterbank
+///
+/// The mel scale uses the HTK formula (`2595 * log10(1 + hz / 700)`). This
+/// differs slightly from `librosa`'s default Slaney scale that the reference
+/// Python `whisper` uses. The difference is small for speech bands and the
+/// output passes the math-property tests; bit-exact `librosa` parity will land
+/// alongside the bit-exact FFT work.
 public actor MelSpectrogram: MelSpectrogramProcessor {
 
+    /// Frame size in samples. 25 ms at 16 kHz.
     public static let frameLength: Int = FFTProcessor.frameLength   // 400
-    public static let hopLength: Int = 160                          // 10 ms @ 16 kHz
+
+    /// Hop size in samples. 10 ms at 16 kHz, giving 100 frames per second.
+    public static let hopLength: Int = 160
+
+    /// Number of FFT power bins each frame produces.
     public static let nFFTBins: Int = FFTProcessor.outputBins       // 257 (FFT padded to 512)
 
     private let nMels: Int
@@ -19,6 +53,12 @@ public actor MelSpectrogram: MelSpectrogramProcessor {
     private let fft: FFTProcessor
     private var leftover: [Float] = []
 
+    /// Creates a mel processor.
+    ///
+    /// - Parameters:
+    ///   - nMels: number of mel bands. 80 for tiny/base/small/medium models,
+    ///     128 for large.
+    ///   - sampleRate: audio sample rate. 16 000 throughout the standard pipeline.
     public init(nMels: Int = 80, sampleRate: Float = 16_000) {
         self.nMels = nMels
         self.sampleRate = sampleRate
@@ -30,11 +70,16 @@ public actor MelSpectrogram: MelSpectrogramProcessor {
         )
     }
 
+    /// Processes a chunk and returns its mel features.
+    ///
+    /// Carries over any partial frame at the end of `chunk` into the next call.
+    /// Returns an empty result when the carry-over plus this chunk is shorter
+    /// than one full frame.
     public func process(chunk: AudioChunk) async throws(SwiftWhisperError) -> MelSpectrogramResult {
         var samples = leftover
         samples.append(contentsOf: chunk.samples)
 
-        var melFrames: [[Float]] = []   // each frame: [nMels] log-power
+        var melFrames: [[Float]] = []
         var pos = 0
         while pos + Self.frameLength <= samples.count {
             let frame = Array(samples[pos..<(pos + Self.frameLength)])
@@ -44,7 +89,6 @@ public actor MelSpectrogram: MelSpectrogramProcessor {
             pos += Self.hopLength
         }
 
-        // Carry over remainder for next call. Slice to keep memory bounded.
         leftover = Array(samples[pos..<samples.count])
 
         guard !melFrames.isEmpty else {
@@ -54,6 +98,8 @@ public actor MelSpectrogram: MelSpectrogramProcessor {
         return normalize(melFrames: melFrames)
     }
 
+    /// Drops the carry-over buffer. Call after a stream restart so the next
+    /// frame starts at sample zero rather than at an offset from the previous run.
     public func reset() async {
         leftover.removeAll(keepingCapacity: true)
     }
@@ -61,7 +107,6 @@ public actor MelSpectrogram: MelSpectrogramProcessor {
     // MARK: - Internals
 
     private func applyFilterbank(power: [Float]) -> [Float] {
-        // mel = filterbank · power, where filterbank is [nMels x nFFTBins] row-major.
         var mel = [Float](repeating: 0, count: nMels)
         filterbank.withUnsafeBufferPointer { fbPtr in
             power.withUnsafeBufferPointer { pPtr in
@@ -77,7 +122,6 @@ public actor MelSpectrogram: MelSpectrogramProcessor {
                 }
             }
         }
-        // log10 with floor
         for i in 0..<nMels {
             mel[i] = log10f(max(mel[i], 1e-10))
         }
@@ -94,7 +138,6 @@ public actor MelSpectrogram: MelSpectrogramProcessor {
         }
         let floorVal = maxVal - 8.0
 
-        // Output layout: row-major [nMels x nFrames] (mel-major).
         var out = [Float](repeating: 0, count: nMels * nFrames)
         for t in 0..<nFrames {
             let frame = melFrames[t]
@@ -114,12 +157,10 @@ public actor MelSpectrogram: MelSpectrogramProcessor {
         let melMax = hzToMel(fMax)
         let melMin: Float = 0
 
-        // (nMels + 2) mel-spaced points: lower edge, centers, upper edge.
         let melPoints: [Float] = (0..<(nMels + 2)).map { i in
             melMin + (melMax - melMin) * Float(i) / Float(nMels + 1)
         }
         let freqPoints = melPoints.map(melToHz)
-        // Continuous bin positions for accurate triangle edges.
         let binPositions: [Float] = freqPoints.map { hz in
             (hz / sampleRate) * Float(fftSize)
         }

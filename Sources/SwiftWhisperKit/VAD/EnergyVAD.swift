@@ -2,15 +2,45 @@ import Accelerate
 import Foundation
 import SwiftWhisperCore
 
-/// Energy-based Voice Activity Detection.
+/// Energy-based voice activity detector.
 ///
-/// Computes RMS power of each AudioChunk, compares against an adaptive noise floor
-/// (rolling mean of recent RMS values), and applies hysteresis to debounce transitions
-/// at segment boundaries.
+/// The cheapest possible VAD: compute the RMS of each chunk, compare against an
+/// adaptive threshold, and apply hysteresis so brief gaps inside a phrase don't
+/// trigger end-of-speech. No model, no allocations on the hot path beyond the
+/// rolling noise floor buffer.
+///
+/// ## How the threshold adapts
+///
+/// The threshold is the larger of:
+///
+/// - A fixed floor (``init(thresholdDB:marginDB:hysteresisFrames:noiseWindow:warmupFrames:)``'s
+///   `thresholdDB`), and
+/// - The rolling mean of the recent noise floor in dB plus a margin.
+///
+/// The noise floor only updates when the detector is in silence, so loud speech
+/// does not pollute the baseline. To bootstrap the floor before any speech can
+/// be detected, the first ``init(thresholdDB:marginDB:hysteresisFrames:noiseWindow:warmupFrames:)``'s
+/// `warmupFrames` chunks are unconditionally treated as silence and feed the
+/// floor. Without that warmup, a single loud first chunk would lock the
+/// detector into speech and the floor would never seed.
+///
+/// ## When to use Silero instead
+///
+/// Energy VAD works well on clean speech with steady background noise. On
+/// recordings with music, traffic, or non-stationary noise it false-positives.
+/// The neural ``SileroVAD`` will be the better choice once it is implemented;
+/// see the open-question list in the implementation plan.
+///
+/// ## Tuning
+///
+/// The defaults (`-40 dB` threshold, 6 dB margin, 5-frame hysteresis, 30-frame
+/// noise window) match a quiet office over an internal mic. For headset use,
+/// drop the threshold to about `-50 dB`. For noisy environments raise the
+/// margin to 9 or 12 dB.
 public actor EnergyVAD: VoiceActivityDetector {
 
-    /// Margin (dB) above the rolling noise floor that an RMS value must exceed
-    /// to count as speech. The fixed `thresholdDB` floor still applies as a minimum.
+    /// Default amount (dB) the current RMS must exceed the rolling floor by
+    /// before it counts as speech. The fixed floor still applies as a minimum.
     public static let defaultMarginDB: Float = 6.0
 
     private let thresholdDB: Float
@@ -24,6 +54,19 @@ public actor EnergyVAD: VoiceActivityDetector {
     private var inSpeech: Bool = false
     private var framesSeen: Int = 0
 
+    /// Creates a detector.
+    ///
+    /// - Parameters:
+    ///   - thresholdDB: lowest threshold the detector will ever use. Anything
+    ///     quieter than this counts as silence regardless of the noise floor.
+    ///   - marginDB: how far above the rolling noise floor the current RMS must
+    ///     sit before it counts as speech.
+    ///   - hysteresisFrames: how many consecutive silent chunks must arrive
+    ///     before an in-progress speech segment is closed. Prevents flicker on
+    ///     short pauses inside a phrase.
+    ///   - noiseWindow: length of the rolling noise-floor buffer, in chunks.
+    ///   - warmupFrames: how many chunks at the start to treat as silence
+    ///     unconditionally so the noise floor can seed.
     public init(
         thresholdDB: Float = -40.0,
         marginDB: Float = EnergyVAD.defaultMarginDB,
@@ -38,6 +81,8 @@ public actor EnergyVAD: VoiceActivityDetector {
         self.warmupFrames = warmupFrames
     }
 
+    /// Returns `true` if the chunk is currently part of a speech segment.
+    /// Stateful: identical chunks fed in different orders may give different answers.
     public func isSpeech(chunk: AudioChunk) async -> Bool {
         guard !chunk.samples.isEmpty else { return inSpeech }
 
@@ -45,8 +90,6 @@ public actor EnergyVAD: VoiceActivityDetector {
         let rmsDB = Self.dB(rms)
         framesSeen += 1
 
-        // During warmup, always update noise floor and report silence.
-        // This prevents permanent latching on continuous near-threshold audio.
         if framesSeen <= warmupFrames {
             appendNoiseFloor(rms)
             return false
@@ -69,7 +112,6 @@ public actor EnergyVAD: VoiceActivityDetector {
             }
         }
 
-        // Only update noise floor when not in speech to avoid contaminating with speech audio.
         if !inSpeech {
             appendNoiseFloor(rms)
         }
@@ -77,6 +119,8 @@ public actor EnergyVAD: VoiceActivityDetector {
         return inSpeech
     }
 
+    /// Resets the noise floor, hysteresis counter, speech state, and warmup
+    /// counter. Use after a long silence or when switching audio sources.
     public func reset() async {
         noiseFloorRMS.removeAll(keepingCapacity: true)
         consecutiveSilent = 0
@@ -101,6 +145,7 @@ public actor EnergyVAD: VoiceActivityDetector {
         return result
     }
 
+    /// Linear amplitude to dBFS. Clamps at `1e-10` to avoid `-inf` on silence.
     static func dB(_ value: Float) -> Float {
         20.0 * log10(max(value, 1e-10))
     }

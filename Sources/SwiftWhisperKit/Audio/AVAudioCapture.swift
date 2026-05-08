@@ -2,19 +2,53 @@
 import Foundation
 import SwiftWhisperCore
 
-/// Microphone capture via `AVAudioEngine` with on-the-fly downsampling to 16 kHz mono Float32.
+/// Microphone capture backed by `AVAudioEngine`, with on-the-fly resampling to the
+/// 16 kHz mono Float32 format Whisper expects.
 ///
-/// Emits `AudioChunk` values on `audioStream`. Cleanup runs automatically when the stream
-/// consumer cancels (via `onTermination`) or when `stopCapture()` is called explicitly.
+/// This is the production ``AudioCapturer`` used by both the iOS host and the
+/// macOS CLI. It hides three pieces of platform plumbing that would otherwise
+/// leak into every caller:
 ///
-/// Platform notes:
-/// - iOS: configures `AVAudioSession` and observes interruption notifications.
-/// - macOS: no audio session; the engine drives the input node directly. CLI/host app
-///   must declare `NSMicrophoneUsageDescription` and (if sandboxed) the
-///   `com.apple.security.device.audio-input` entitlement.
+/// 1. **Format conversion.** Hardware microphones report whatever rate they like
+///    (44.1 kHz on most Macs, 48 kHz on iPhones, sometimes 24 kHz on AirPods).
+///    `AVAudioConverter` handles the resampling so the rest of the pipeline can
+///    assume 16 kHz mono Float32.
+/// 2. **Stream cleanup.** When the consumer of ``audioStream`` cancels its task,
+///    the engine and tap are torn down automatically through the continuation's
+///    `onTermination` handler. No need to remember to call ``stopCapture()`` on
+///    cancellation.
+/// 3. **Interruptions.** On iOS, the audio session's interruption notifications
+///    pause and resume the engine around phone calls and Siri activations.
+///    On macOS this isn't needed because there's no audio session to lose.
+///
+/// ## Permission
+///
+/// Microphone access is requested on the first call to ``startCapture()``. The
+/// host app must declare `NSMicrophoneUsageDescription` in `Info.plist`. If the
+/// macOS host is sandboxed it must also enable the
+/// `com.apple.security.device.audio-input` entitlement.
+///
+/// ## Example
+///
+/// ```swift
+/// let capture = AVAudioCapture()
+///
+/// Task {
+///     for await chunk in capture.audioStream {
+///         print("got \(chunk.samples.count) samples at \(chunk.timestamp)s")
+///     }
+/// }
+///
+/// try await capture.startCapture()
+/// // ... later
+/// await capture.stopCapture()
+/// ```
 public actor AVAudioCapture: AudioCapturer {
 
+    /// Async stream of resampled audio chunks. Stable for the lifetime of this
+    /// actor; consumers can `for await` it before ``startCapture()`` returns.
     public nonisolated let audioStream: AsyncStream<AudioChunk>
+
     private nonisolated let continuation: AsyncStream<AudioChunk>.Continuation
     private let box: CaptureBox
 
@@ -27,6 +61,14 @@ public actor AVAudioCapture: AudioCapturer {
     private var interruptionObserver: NSObjectProtocol?
     #endif
 
+    /// Creates a capture actor.
+    ///
+    /// - Parameters:
+    ///   - targetSampleRate: sample rate to resample to. Defaults to 16 000 Hz to
+    ///     match Whisper. Override only if you are wiring a non-Whisper consumer.
+    ///   - bufferDurationSeconds: requested tap buffer length. The default of
+    ///     64 ms balances callback frequency (avoiding overhead) against capture
+    ///     latency (keeping the VAD responsive).
     public init(targetSampleRate: Double = 16_000, bufferDurationSeconds: Double = 0.064) {
         self.targetSampleRate = targetSampleRate
         self.bufferDurationSeconds = bufferDurationSeconds
@@ -36,13 +78,21 @@ public actor AVAudioCapture: AudioCapturer {
         self.continuation = continuation
         self.box = CaptureBox()
 
-        // Capture cleanup state in the box; closure cannot reach actor-isolated state.
         let box = self.box
         continuation.onTermination = { @Sendable _ in
             box.teardown()
         }
     }
 
+    /// Boots the audio engine, requests permission if needed, installs the input
+    /// tap, and starts streaming chunks.
+    ///
+    /// Throws ``SwiftWhisperError/micPermissionDenied`` if the user has not
+    /// granted access; ``SwiftWhisperError/audioConversionFailed`` if the
+    /// resampler refuses to set up; or ``SwiftWhisperError/audioCaptureFailed(_:)``
+    /// for any other engine or session error.
+    ///
+    /// Calling more than once without ``stopCapture()`` is a no-op.
     public func startCapture() async throws(SwiftWhisperError) {
         guard !isCapturing else { return }
 
@@ -110,6 +160,8 @@ public actor AVAudioCapture: AudioCapturer {
         }
     }
 
+    /// Stops the engine, removes the tap, deactivates the audio session (iOS),
+    /// and finishes ``audioStream``. Idempotent.
     public func stopCapture() async {
         guard isCapturing else { return }
         box.teardown()
@@ -172,16 +224,24 @@ public actor AVAudioCapture: AudioCapturer {
 
 // MARK: - CaptureBox
 
-/// Holds non-Sendable AVFoundation references behind a Sendable boundary.
-/// Mutations are serialized: writes only happen from the actor before the tap is
-/// installed; reads happen from the audio thread inside the tap callback or from
-/// `teardown()` under the actor's serial isolation.
+/// Holds non-`Sendable` AVFoundation references behind a `Sendable` boundary.
+///
+/// `AVAudioEngine` and `AVAudioConverter` aren't `Sendable`, but the tap callback
+/// runs on a real-time audio thread that sits outside actor isolation, so we
+/// need a way to reach them from there without a hop. The box owns the engine,
+/// the converter, and a flag tracking whether the tap is installed. Mutations
+/// happen only inside `startCapture()` and `teardown()`, both of which run
+/// under the actor's serial isolation, so the manual `@unchecked Sendable`
+/// claim holds.
 private final class CaptureBox: @unchecked Sendable {
     let engine = AVAudioEngine()
     var converter: AVAudioConverter?
     var outputFormat: AVAudioFormat?
     var tapInstalled = false
 
+    /// Resamples a single capture buffer to the target rate as a contiguous
+    /// `[Float]`. Returns `nil` on conversion failure rather than throwing,
+    /// because the tap callback can't propagate Swift errors.
     func convert(
         buffer: AVAudioPCMBuffer,
         sourceRate: Double,
@@ -214,6 +274,7 @@ private final class CaptureBox: @unchecked Sendable {
         return Array(UnsafeBufferPointer(start: data, count: count))
     }
 
+    /// Removes any tap and stops the engine. Safe to call when nothing is running.
     func teardown() {
         if tapInstalled {
             engine.inputNode.removeTap(onBus: 0)
@@ -226,9 +287,12 @@ private final class CaptureBox: @unchecked Sendable {
     }
 }
 
-/// Reference-typed flag used by the synchronous converter callback. The callback
-/// fires once per `convert(to:error:)` invocation, so single-threaded mutation
-/// is safe even though the surrounding closure is `@Sendable`.
+/// Reference flag the converter callback uses to feed the buffer exactly once.
+///
+/// `AVAudioConverter.convert(to:error:withInputFrom:)` may invoke its callback
+/// multiple times per call; we want to hand over the buffer the first time and
+/// say `noDataNow` after that. A struct-typed `var` captured by the `@Sendable`
+/// closure would trip Swift 6 capture rules, so the flag lives on a class.
 private final class ConsumedFlag: @unchecked Sendable {
     var value: Bool = false
 }

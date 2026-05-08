@@ -1,25 +1,56 @@
 import Accelerate
 import Foundation
 
-/// Real-valued FFT for Whisper-style 400-sample frames at 16 kHz, returning a power spectrum.
+/// Real-input FFT for Whisper-style 400-sample frames at 16 kHz.
 ///
-/// Input frames are 400 samples (25 ms @ 16 kHz, matching Whisper's n_fft semantics for hop
-/// calculations) but are zero-padded to 512 internally because `vDSP.DFT` accepts only
-/// counts of the form `f * 2^n` with `f ∈ {1, 3, 5, 15}`. This produces 257 output bins
-/// at ~31.25 Hz/bin.
+/// The Whisper preprocessing pipeline applies a Hann window to a 25 ms frame
+/// (400 samples at 16 kHz), takes the FFT, and squares the magnitude to get a
+/// power spectrum. That power spectrum is what the mel filterbank maps onto.
 ///
-/// The Hann window (length 400) and `vDSP.DFT` setup are precomputed once and reused per
-/// frame. The setup object is single-owner; transport across threads requires the owning
-/// actor to serialize calls.
+/// ## Why 512, not 400?
+///
+/// `vDSP.DiscreteFourierTransform` only accepts lengths of the form `f * 2^n`
+/// where `f` is one of `{1, 3, 5, 15}`. 400 doesn't fit (it's `25 * 16`, and
+/// 25 isn't on the list), so we zero-pad the windowed frame to 512 before
+/// calling the transform. This changes the bin spacing from 40 Hz/bin to
+/// 31.25 Hz/bin and gives 257 output bins instead of 201, but doesn't change
+/// the underlying frequency content.
+///
+/// Switching to a true 400-point FFT to match the reference Python `whisper`
+/// bit-exactly would need a non-Apple FFT library (KissFFT, FFTW, or a custom
+/// Bluestein implementation). That's deferred until model integration shows
+/// the bin offsets are causing accuracy regressions.
+///
+/// ## Performance
+///
+/// Both the Hann window and the DFT setup are precomputed once in
+/// ``init()`` and reused across calls. Each ``process(frame:)`` allocates the
+/// padded buffer, the imaginary input, and the two output buffers. Profiling
+/// will eventually move those into a per-instance scratch area, but the current
+/// shape keeps the code simple.
+///
+/// ## Thread safety
+///
+/// The DFT setup is safe for serial use from a single owner. This struct hides
+/// the setup behind an `@unchecked Sendable` box; callers are expected to
+/// confine usage to one actor at a time, which the typical owner
+/// (``MelSpectrogram``, an actor) already does.
 public struct FFTProcessor: Sendable {
 
+    /// Length of the input frame in samples. 25 ms at 16 kHz.
     public static let frameLength: Int = 400
+
+    /// FFT length used internally after zero-padding.
     public static let fftSize: Int = 512
+
+    /// Number of unique output bins. `fftSize/2 + 1`.
     public static let outputBins: Int = fftSize / 2 + 1   // 257
 
     private let setup: DFTSetupBox
     private let window: [Float]
 
+    /// Builds the Hann window and DFT setup. Cheap enough to call per request,
+    /// but typical use is one instance per pipeline.
     public init() {
         self.setup = DFTSetupBox(count: Self.fftSize)
         self.window = (0..<Self.frameLength).map { i in
@@ -27,13 +58,14 @@ public struct FFTProcessor: Sendable {
         }
     }
 
-    /// Computes the power spectrum `|X[k]|^2` of a windowed real-valued frame.
-    /// - Parameter frame: exactly `frameLength` samples.
-    /// - Returns: `outputBins` non-negative power values.
+    /// Computes the power spectrum `|X[k]|^2` of a windowed frame.
+    ///
+    /// - Parameter frame: exactly ``frameLength`` real-valued samples.
+    /// - Returns: ``outputBins`` non-negative power values, indexed from DC at
+    ///   bin 0 to Nyquist at bin `outputBins - 1`.
     public func process(frame: [Float]) -> [Float] {
         precondition(frame.count == Self.frameLength, "frame must be \(Self.frameLength) samples")
 
-        // Window the 400-sample frame, then zero-pad to fftSize.
         var padded = [Float](repeating: 0, count: Self.fftSize)
         padded.withUnsafeMutableBufferPointer { paddedPtr in
             frame.withUnsafeBufferPointer { framePtr in
@@ -67,19 +99,19 @@ public struct FFTProcessor: Sendable {
     }
 }
 
-/// `vDSP.DFT` setup object wrapped for `Sendable` transport. Single-owner usage required.
 private final class DFTSetupBox: @unchecked Sendable {
-    let dft: vDSP.DFT<Float>
+    let dft: vDSP.DiscreteFourierTransform<Float>
 
     init(count: Int) {
-        guard let dft = vDSP.DFT(
-            count: count,
-            direction: .forward,
-            transformType: .complexComplex,
-            ofType: Float.self
-        ) else {
-            preconditionFailure("vDSP.DFT init failed for count=\(count)")
+        do {
+            self.dft = try vDSP.DiscreteFourierTransform(
+                count: count,
+                direction: .forward,
+                transformType: .complexComplex,
+                ofType: Float.self
+            )
+        } catch {
+            preconditionFailure("vDSP.DiscreteFourierTransform init failed for count=\(count): \(error)")
         }
-        self.dft = dft
     }
 }
