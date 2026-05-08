@@ -2,8 +2,8 @@ import Foundation
 
 /// Anything that produces a stream of ``AudioChunk`` values.
 ///
-/// The concrete implementation in ``SwiftWhisperKit/AVAudioCapture`` reads from the
-/// microphone, but tests and offline tools can supply other implementations that
+/// The concrete implementation in `AVAudioCapture` (in `SwiftWhisperKit`) reads
+/// from the microphone, but tests and offline tools can supply other implementations that
 /// read from files or replay fixtures. The protocol is constrained to `Actor` so
 /// that capture state (running flag, engine reference, observers) can never be
 /// mutated from two contexts at once.

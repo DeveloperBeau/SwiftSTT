@@ -10,9 +10,9 @@ import Foundation
 /// 2. Whisper has a known habit of hallucinating text on silent input. A VAD
 ///    pass is the cheapest defence against that.
 ///
-/// The Kit module ships ``SwiftWhisperKit/EnergyVAD`` (RMS-based, no model needed).
-/// A neural VAD is planned via ``SwiftWhisperKit/SileroVAD`` for harder noise
-/// conditions where pure energy thresholds struggle.
+/// The `SwiftWhisperKit` module ships `EnergyVAD` (RMS-based, no model needed).
+/// A neural VAD is planned via `SileroVAD` for harder noise conditions where
+/// pure energy thresholds struggle.
 public protocol VoiceActivityDetector: Actor {
 
     /// Returns `true` if the chunk should be treated as speech.

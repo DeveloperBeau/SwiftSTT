@@ -4,9 +4,12 @@ import SwiftWhisperCore
 
 /// Streaming mel-scale log-power spectrogram, Whisper-compatible.
 ///
-/// This actor turns a stream of arbitrary-length ``AudioChunk`` values into the
-/// log-mel features Whisper's encoder consumes. The implementation is split
-/// into four steps that run for every 400-sample frame:
+/// This actor turns a stream of arbitrary-length `AudioChunk` values into the
+/// log-mel features Whisper's encoder consumes. For an introduction to what
+/// "log-mel" means and why speech models use it, see
+/// <doc:Understanding-Mel-Spectrograms>.
+///
+/// The implementation is split into four steps that run for every 400-sample frame:
 ///
 /// 1. Hann-window the frame and run an FFT through ``FFTProcessor``.
 /// 2. Multiply the resulting power spectrum by an 80-band mel filterbank using
@@ -25,7 +28,7 @@ import SwiftWhisperCore
 ///
 /// ## Output layout
 ///
-/// ``MelSpectrogramResult/frames`` is row-major `[nMels x nFrames]`, matching
+/// `MelSpectrogramResult.frames` is row-major `[nMels x nFrames]`, matching
 /// the layout the Core ML encoder expects. To read mel band `m` at frame `t`,
 /// use `frames[m * nFrames + t]`.
 ///

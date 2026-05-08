@@ -10,7 +10,7 @@ import SwiftWhisperCore
 /// - Maintaining the KV cache across steps so the per-token cost stays linear.
 /// - Applying logit filters (suppress blank, suppress non-speech, timestamp rules).
 /// - Sampling the next token (greedy, beam search, or temperature sampling
-///   based on ``DecodingOptions``).
+///   based on `DecodingOptions`).
 /// - Stopping at the end-of-text token.
 public protocol TokenDecoding: Actor {
 

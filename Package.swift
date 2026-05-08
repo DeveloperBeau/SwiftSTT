@@ -12,6 +12,9 @@ let package = Package(
         .library(name: "SwiftWhisperKit", targets: ["SwiftWhisperKit"]),
         .executable(name: "swiftwhisper", targets: ["SwiftWhisperCLI"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.4.0"),
+    ],
     targets: [
         .target(
             name: "SwiftWhisperCore"

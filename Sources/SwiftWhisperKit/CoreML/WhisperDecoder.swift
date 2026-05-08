@@ -11,7 +11,7 @@ import SwiftWhisperCore
 ///
 /// ## Sampling
 ///
-/// Two strategies live here, picked based on ``DecodingOptions``:
+/// Two strategies live here, picked based on `DecodingOptions`:
 ///
 /// - **Greedy** (`temperature == 0`, `beamSize == 1`): always pick `argmax`.
 ///   Fastest. Good enough for clean speech.

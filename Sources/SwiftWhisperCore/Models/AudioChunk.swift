@@ -4,7 +4,7 @@ import Foundation
 ///
 /// The pipeline standardises on 16 kHz mono Float32 because that is the rate Whisper
 /// models expect. Capture sources that record at 44.1 or 48 kHz should resample before
-/// emitting chunks, which is what ``SwiftWhisperKit/AVAudioCapture`` does.
+/// emitting chunks, which is what `AVAudioCapture` in `SwiftWhisperKit` does.
 ///
 /// Chunks are deliberately small (typically 1024 samples, around 64 ms) so that the
 /// downstream voice activity detector and mel spectrogram can react with low latency.

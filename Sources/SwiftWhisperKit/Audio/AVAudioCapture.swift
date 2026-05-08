@@ -5,7 +5,7 @@ import SwiftWhisperCore
 /// Microphone capture backed by `AVAudioEngine`, with on-the-fly resampling to the
 /// 16 kHz mono Float32 format Whisper expects.
 ///
-/// This is the production ``AudioCapturer`` used by both the iOS host and the
+/// This is the production `AudioCapturer` used by both the iOS host and the
 /// macOS CLI. It hides three pieces of platform plumbing that would otherwise
 /// leak into every caller:
 ///
@@ -87,9 +87,9 @@ public actor AVAudioCapture: AudioCapturer {
     /// Boots the audio engine, requests permission if needed, installs the input
     /// tap, and starts streaming chunks.
     ///
-    /// Throws ``SwiftWhisperError/micPermissionDenied`` if the user has not
-    /// granted access; ``SwiftWhisperError/audioConversionFailed`` if the
-    /// resampler refuses to set up; or ``SwiftWhisperError/audioCaptureFailed(_:)``
+    /// Throws `SwiftWhisperError.micPermissionDenied` if the user has not
+    /// granted access; `SwiftWhisperError.audioConversionFailed` if the
+    /// resampler refuses to set up; or `SwiftWhisperError.audioCaptureFailed`
     /// for any other engine or session error.
     ///
     /// Calling more than once without ``stopCapture()`` is a no-op.

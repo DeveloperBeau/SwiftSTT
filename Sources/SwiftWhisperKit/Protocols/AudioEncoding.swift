@@ -17,7 +17,7 @@ public protocol AudioEncoding: Actor {
     /// Encodes a mel spectrogram into an embedding tensor.
     ///
     /// - Parameter spectrogram: log-mel features in the layout that
-    ///   ``MelSpectrogramResult`` documents. Caller is responsible for
+    ///   `MelSpectrogramResult` documents. Caller is responsible for
     ///   padding or trimming to the model's expected frame count.
     /// - Returns: encoder output as a Core ML `MLMultiArray`, ready to feed
     ///   into the decoder.

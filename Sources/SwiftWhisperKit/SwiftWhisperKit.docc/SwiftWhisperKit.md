@@ -34,6 +34,7 @@ The Core ML side (``ModelLoader``, ``WhisperEncoder``, ``WhisperDecoder``, ``Whi
 
 - ``FFTProcessor``
 - ``MelSpectrogram``
+- <doc:Understanding-Mel-Spectrograms>
 
 ### Core ML pipeline
 
