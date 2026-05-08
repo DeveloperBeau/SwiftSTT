@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import Foundation
+import Synchronization
 import SwiftWhisperCore
 
 /// Microphone capture backed by `AVAudioEngine`, with on-the-fly resampling to the
@@ -226,13 +227,20 @@ public actor AVAudioCapture: AudioCapturer {
 
 /// Holds non-`Sendable` AVFoundation references behind a `Sendable` boundary.
 ///
-/// `AVAudioEngine` and `AVAudioConverter` aren't `Sendable`, but the tap callback
-/// runs on a real-time audio thread that sits outside actor isolation, so we
-/// need a way to reach them from there without a hop. The box owns the engine,
-/// the converter, and a flag tracking whether the tap is installed. Mutations
-/// happen only inside `startCapture()` and `teardown()`, both of which run
-/// under the actor's serial isolation, so the manual `@unchecked Sendable`
-/// claim holds.
+/// `AVAudioEngine`, `AVAudioConverter`, and `AVAudioFormat` are not marked
+/// `Sendable` upstream, so any wrapper that needs to cross an actor boundary
+/// has to make the safety claim manually. We use `@unchecked Sendable` here
+/// rather than `Mutex` for two reasons:
+///
+/// - The mutable bits (`converter`, `outputFormat`, `tapInstalled`) are written
+///   exactly once each, inside `startCapture()` on the actor, *before* the tap
+///   is installed. After that they are read-only from both the actor and the
+///   real-time audio thread, which is data-race free.
+/// - `AVAudioEngine` is documented as thread-safe to call from any thread, so
+///   the engine reference itself does not need extra protection.
+///
+/// If Apple ever marks these types `Sendable`, the `@unchecked` annotation can
+/// drop and the box can become a regular value type.
 private final class CaptureBox: @unchecked Sendable {
     let engine = AVAudioEngine()
     var converter: AVAudioConverter?
@@ -255,13 +263,13 @@ private final class CaptureBox: @unchecked Sendable {
         }
 
         var error: NSError?
-        let consumed = ConsumedFlag()
+        let consumed = Atomic<Bool>(false)
         let status = converter.convert(to: outBuffer, error: &error) { _, outStatus in
-            if consumed.value {
+            if consumed.load(ordering: .relaxed) {
                 outStatus.pointee = .noDataNow
                 return nil
             }
-            consumed.value = true
+            consumed.store(true, ordering: .relaxed)
             outStatus.pointee = .haveData
             return buffer
         }
@@ -287,12 +295,3 @@ private final class CaptureBox: @unchecked Sendable {
     }
 }
 
-/// Reference flag the converter callback uses to feed the buffer exactly once.
-///
-/// `AVAudioConverter.convert(to:error:withInputFrom:)` may invoke its callback
-/// multiple times per call; we want to hand over the buffer the first time and
-/// say `noDataNow` after that. A struct-typed `var` captured by the `@Sendable`
-/// closure would trip Swift 6 capture rules, so the flag lives on a class.
-private final class ConsumedFlag: @unchecked Sendable {
-    var value: Bool = false
-}

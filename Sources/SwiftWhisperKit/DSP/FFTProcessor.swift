@@ -31,11 +31,10 @@ import Foundation
 ///
 /// ## Thread safety
 ///
-/// The DFT setup is safe for serial use from a single owner. This struct hides
-/// the setup behind an `@unchecked Sendable` box; callers are expected to
-/// confine usage to one actor at a time, which the typical owner
-/// (``MelSpectrogram``, an actor) already does.
-public struct FFTProcessor: Sendable {
+/// The DFT setup is safe for serial use from a single owner but is not
+/// `Sendable` upstream, so this struct is not `Sendable` either. Hold it as
+/// actor-isolated state (``MelSpectrogram`` does) and callers stay safe.
+public struct FFTProcessor {
 
     /// Length of the input frame in samples. 25 ms at 16 kHz.
     public static let frameLength: Int = 400
@@ -46,13 +45,22 @@ public struct FFTProcessor: Sendable {
     /// Number of unique output bins. `fftSize/2 + 1`.
     public static let outputBins: Int = fftSize / 2 + 1   // 257
 
-    private let setup: DFTSetupBox
+    private let dft: vDSP.DiscreteFourierTransform<Float>
     private let window: [Float]
 
     /// Builds the Hann window and DFT setup. Cheap enough to call per request,
     /// but typical use is one instance per pipeline.
     public init() {
-        self.setup = DFTSetupBox(count: Self.fftSize)
+        do {
+            self.dft = try vDSP.DiscreteFourierTransform(
+                count: Self.fftSize,
+                direction: .forward,
+                transformType: .complexComplex,
+                ofType: Float.self
+            )
+        } catch {
+            preconditionFailure("vDSP.DiscreteFourierTransform init failed: \(error)")
+        }
         self.window = (0..<Self.frameLength).map { i in
             0.5 * (1 - cosf(2 * .pi * Float(i) / Float(Self.frameLength - 1)))
         }
@@ -84,7 +92,7 @@ public struct FFTProcessor: Sendable {
         var realOut = [Float](repeating: 0, count: Self.fftSize)
         var imagOut = [Float](repeating: 0, count: Self.fftSize)
 
-        setup.dft.transform(
+        dft.transform(
             inputReal: padded,
             inputImaginary: imagIn,
             outputReal: &realOut,
@@ -99,19 +107,3 @@ public struct FFTProcessor: Sendable {
     }
 }
 
-private final class DFTSetupBox: @unchecked Sendable {
-    let dft: vDSP.DiscreteFourierTransform<Float>
-
-    init(count: Int) {
-        do {
-            self.dft = try vDSP.DiscreteFourierTransform(
-                count: count,
-                direction: .forward,
-                transformType: .complexComplex,
-                ofType: Float.self
-            )
-        } catch {
-            preconditionFailure("vDSP.DiscreteFourierTransform init failed for count=\(count): \(error)")
-        }
-    }
-}
