@@ -1,5 +1,23 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.3
 import PackageDescription
+
+// Upcoming-feature flags activate Swift 6.1/6.2 "approachable concurrency"
+// behaviour while staying on language mode v6:
+//
+//   NonisolatedNonsendingByDefault  - SE-0461 - async funcs run on caller's
+//                                     executor instead of being implicitly
+//                                     offloaded; eliminates many spurious
+//                                     "sending risks data race" diagnostics.
+//   InferIsolatedConformances       - SE-0466 - protocol conformances on
+//                                     actor-isolated types infer the host
+//                                     isolation by default.
+//
+// Library targets stay nonisolated by default. The CLI executable opts into
+// MainActor isolation since it is a single-threaded program by nature.
+let approachableConcurrency: [SwiftSetting] = [
+    .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
+    .enableUpcomingFeature("InferIsolatedConformances"),
+]
 
 let package = Package(
     name: "SwiftWhisper",
@@ -17,23 +35,30 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "SwiftWhisperCore"
+            name: "SwiftWhisperCore",
+            swiftSettings: approachableConcurrency
         ),
         .target(
             name: "SwiftWhisperKit",
-            dependencies: ["SwiftWhisperCore"]
+            dependencies: ["SwiftWhisperCore"],
+            swiftSettings: approachableConcurrency
         ),
         .executableTarget(
             name: "SwiftWhisperCLI",
-            dependencies: ["SwiftWhisperKit"]
+            dependencies: ["SwiftWhisperKit"],
+            swiftSettings: approachableConcurrency + [
+                .defaultIsolation(MainActor.self),
+            ]
         ),
         .testTarget(
             name: "SwiftWhisperCoreTests",
-            dependencies: ["SwiftWhisperCore"]
+            dependencies: ["SwiftWhisperCore"],
+            swiftSettings: approachableConcurrency
         ),
         .testTarget(
             name: "SwiftWhisperKitTests",
-            dependencies: ["SwiftWhisperKit"]
+            dependencies: ["SwiftWhisperKit"],
+            swiftSettings: approachableConcurrency
         ),
     ],
     swiftLanguageModes: [.v6]
