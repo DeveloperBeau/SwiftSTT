@@ -1,5 +1,6 @@
 import Accelerate
 import Foundation
+import SwiftWhisperCore
 
 /// Real-input FFT for Whisper-style 400-sample frames at 16 kHz.
 ///
@@ -44,18 +45,26 @@ public struct FFTProcessor {
     private let dft: vDSP.DiscreteFourierTransform<Float>
     private let window: [Float]
 
-    /// Builds the Hann window and DFT setup. Cheap enough to call per request,
-    /// but typical use is one instance per pipeline.
-    public init() {
+    /// Builds the Hann window and DFT setup. Throws
+    /// ``SwiftWhisperCore/SwiftWhisperError/fftSetupFailed(_:)`` if the DFT
+    /// rejects the configured size.
+    public init() throws(SwiftWhisperError) {
+        try self.init(fftSize: Self.fftSize)
+    }
+
+    /// Internal init for tests that need to exercise the failure path with an
+    /// invalid count (`vDSP.DiscreteFourierTransform` rejects sizes that are
+    /// not of the form `f * 2^n` with `f ∈ {1, 3, 5, 15}`).
+    internal init(fftSize: Int) throws(SwiftWhisperError) {
         do {
             self.dft = try vDSP.DiscreteFourierTransform(
-                count: Self.fftSize,
+                count: fftSize,
                 direction: .forward,
                 transformType: .complexComplex,
                 ofType: Float.self
             )
         } catch {
-            preconditionFailure("vDSP.DiscreteFourierTransform init failed: \(error)")
+            throw .fftSetupFailed(String(describing: error))
         }
         self.window = (0..<Self.frameLength).map { i in
             0.5 * (1 - cosf(2 * .pi * Float(i) / Float(Self.frameLength - 1)))
@@ -67,8 +76,12 @@ public struct FFTProcessor {
     /// - Parameter frame: exactly ``frameLength`` real-valued samples.
     /// - Returns: ``outputBins`` non-negative power values, indexed from DC at
     ///   bin 0 to Nyquist at bin `outputBins - 1`.
-    public func process(frame: [Float]) -> [Float] {
-        precondition(frame.count == Self.frameLength, "frame must be \(Self.frameLength) samples")
+    /// - Throws: ``SwiftWhisperCore/SwiftWhisperError/fftFrameSizeMismatch(got:expected:)``
+    ///   if `frame.count != frameLength`.
+    public func process(frame: [Float]) throws(SwiftWhisperError) -> [Float] {
+        guard frame.count == Self.frameLength else {
+            throw .fftFrameSizeMismatch(got: frame.count, expected: Self.frameLength)
+        }
 
         var padded = [Float](repeating: 0, count: Self.fftSize)
         padded.withUnsafeMutableBufferPointer { paddedPtr in

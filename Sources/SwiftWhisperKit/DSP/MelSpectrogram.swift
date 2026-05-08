@@ -56,16 +56,17 @@ public actor MelSpectrogram: MelSpectrogramProcessor {
     private let fft: FFTProcessor
     private var leftover: [Float] = []
 
-    /// Creates a mel processor.
+    /// Creates a mel processor. Propagates any error from the underlying
+    /// ``FFTProcessor`` setup.
     ///
     /// - Parameters:
     ///   - nMels: number of mel bands. 80 for tiny/base/small/medium models,
     ///     128 for large.
     ///   - sampleRate: audio sample rate. 16 000 throughout the standard pipeline.
-    public init(nMels: Int = 80, sampleRate: Float = 16_000) {
+    public init(nMels: Int = 80, sampleRate: Float = 16_000) throws(SwiftWhisperError) {
         self.nMels = nMels
         self.sampleRate = sampleRate
-        self.fft = FFTProcessor()
+        self.fft = try FFTProcessor()
         self.filterbank = Self.makeMelFilterbank(
             nMels: nMels,
             fftSize: FFTProcessor.fftSize,
@@ -86,7 +87,7 @@ public actor MelSpectrogram: MelSpectrogramProcessor {
         var pos = 0
         while pos + Self.frameLength <= samples.count {
             let frame = Array(samples[pos..<(pos + Self.frameLength)])
-            let power = fft.process(frame: frame)
+            let power = try fft.process(frame: frame)
             let mel = applyFilterbank(power: power)
             melFrames.append(mel)
             pos += Self.hopLength
@@ -95,10 +96,10 @@ public actor MelSpectrogram: MelSpectrogramProcessor {
         leftover = Array(samples[pos..<samples.count])
 
         guard !melFrames.isEmpty else {
-            return MelSpectrogramResult(frames: [], nMels: nMels, nFrames: 0)
+            return try MelSpectrogramResult(frames: [], nMels: nMels, nFrames: 0)
         }
 
-        return normalize(melFrames: melFrames)
+        return try normalize(melFrames: melFrames)
     }
 
     /// Drops the carry-over buffer. Call after a stream restart so the next
@@ -131,7 +132,7 @@ public actor MelSpectrogram: MelSpectrogramProcessor {
         return mel
     }
 
-    private func normalize(melFrames: [[Float]]) -> MelSpectrogramResult {
+    private func normalize(melFrames: [[Float]]) throws(SwiftWhisperError) -> MelSpectrogramResult {
         let nFrames = melFrames.count
         var maxVal: Float = -.greatestFiniteMagnitude
         for frame in melFrames {
@@ -149,7 +150,7 @@ public actor MelSpectrogram: MelSpectrogramProcessor {
                 out[m * nFrames + t] = (clamped + 4.0) / 4.0
             }
         }
-        return MelSpectrogramResult(frames: out, nMels: nMels, nFrames: nFrames)
+        return try MelSpectrogramResult(frames: out, nMels: nMels, nFrames: nFrames)
     }
 
     // MARK: - Filterbank construction (HTK mel formula)

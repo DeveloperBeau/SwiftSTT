@@ -37,13 +37,13 @@ struct StubTests {
     // MARK: - WhisperEncoder
 
     @Test("WhisperEncoder.encode throws notImplemented")
-    func encoderThrows() async {
+    func encoderThrows() async throws {
         let encoder = WhisperEncoder()
-        let mel = MelSpectrogramResult(frames: [], nMels: 0, nFrames: 0)
+        let mel = try MelSpectrogramResult(frames: [], nMels: 0, nFrames: 0)
         do {
             _ = try await encoder.encode(spectrogram: mel)
             Issue.record("expected throw")
-        } catch {
+        } catch let error as SwiftWhisperError {
             #expect(error == .notImplemented)
         }
     }

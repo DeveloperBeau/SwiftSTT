@@ -1,33 +1,15 @@
-@preconcurrency import AVFoundation
 import Foundation
-import Synchronization
 import SwiftWhisperCore
 
-/// Microphone capture backed by `AVAudioEngine`, with on-the-fly resampling to the
-/// 16 kHz mono Float32 format Whisper expects.
+/// Streams ``AudioChunk`` values from an injected ``AudioInputProvider``.
 ///
-/// This is the production `AudioCapturer` used by both the iOS host and the
-/// macOS CLI. It hides three pieces of platform plumbing that would otherwise
-/// leak into every caller:
+/// Defaults to ``AVMicrophoneInput`` (real microphone) but accepts any provider,
+/// which is what makes the actor testable. The actor itself only handles the
+/// state machine and the AsyncStream lifecycle; the heavy AVFoundation lifting
+/// lives in ``AVMicrophoneInput``.
 ///
-/// 1. **Format conversion.** Hardware microphones report whatever rate they like
-///    (44.1 kHz on most Macs, 48 kHz on iPhones, sometimes 24 kHz on AirPods).
-///    `AVAudioConverter` handles the resampling so the rest of the pipeline can
-///    assume 16 kHz mono Float32.
-/// 2. **Stream cleanup.** When the consumer of ``audioStream`` cancels its task,
-///    the engine and tap are torn down automatically through the continuation's
-///    `onTermination` handler. No need to remember to call ``stopCapture()`` on
-///    cancellation.
-/// 3. **Interruptions.** On iOS, the audio session's interruption notifications
-///    pause and resume the engine around phone calls and Siri activations.
-///    On macOS this isn't needed because there's no audio session to lose.
-///
-/// ## Permission
-///
-/// Microphone access is requested on the first call to ``startCapture()``. The
-/// host app must declare `NSMicrophoneUsageDescription` in `Info.plist`. If the
-/// macOS host is sandboxed it must also enable the
-/// `com.apple.security.device.audio-input` entitlement.
+/// Cleanup runs automatically when the stream consumer cancels (via
+/// `onTermination`) or when `stopCapture()` is called explicitly.
 ///
 /// ## Example
 ///
@@ -50,230 +32,74 @@ public actor AVAudioCapture: AudioCapturer {
     public nonisolated let audioStream: AsyncStream<AudioChunk>
 
     private nonisolated let continuation: AsyncStream<AudioChunk>.Continuation
-    private let box: CaptureBox
+    private let provider: any AudioInputProvider
 
     private let targetSampleRate: Double
     private let bufferDurationSeconds: Double
     private var isCapturing: Bool = false
     private var startTimestamp: TimeInterval = 0
 
-    #if os(iOS)
-    private var interruptionObserver: NSObjectProtocol?
-    #endif
-
     /// Creates a capture actor.
     ///
     /// - Parameters:
-    ///   - targetSampleRate: sample rate to resample to. Defaults to 16 000 Hz to
-    ///     match Whisper. Override only if you are wiring a non-Whisper consumer.
-    ///   - bufferDurationSeconds: requested tap buffer length. The default of
-    ///     64 ms balances callback frequency (avoiding overhead) against capture
-    ///     latency (keeping the VAD responsive).
-    public init(targetSampleRate: Double = 16_000, bufferDurationSeconds: Double = 0.064) {
+    ///   - provider: source of raw audio samples. Defaults to
+    ///     ``AVMicrophoneInput`` (real microphone).
+    ///   - targetSampleRate: rate to resample to. 16 000 Hz matches Whisper.
+    ///   - bufferDurationSeconds: requested provider buffer length. The
+    ///     default of 64 ms balances callback frequency against latency.
+    public init(
+        provider: any AudioInputProvider = AVMicrophoneInput(),
+        targetSampleRate: Double = 16_000,
+        bufferDurationSeconds: Double = 0.064
+    ) {
+        self.provider = provider
         self.targetSampleRate = targetSampleRate
         self.bufferDurationSeconds = bufferDurationSeconds
 
         let (stream, continuation) = AsyncStream<AudioChunk>.makeStream()
         self.audioStream = stream
         self.continuation = continuation
-        self.box = CaptureBox()
 
-        let box = self.box
+        let providerForCleanup = provider
         continuation.onTermination = { @Sendable _ in
-            box.teardown()
+            Task { await providerForCleanup.stop() }
         }
     }
 
-    /// Boots the audio engine, requests permission if needed, installs the input
-    /// tap, and starts streaming chunks.
+    /// Asks the provider to start producing audio. Forwards each delivered
+    /// buffer onto ``audioStream`` as an ``SwiftWhisperCore/AudioChunk``.
     ///
-    /// Throws `SwiftWhisperError.micPermissionDenied` if the user has not
-    /// granted access; `SwiftWhisperError.audioConversionFailed` if the
-    /// resampler refuses to set up; or `SwiftWhisperError.audioCaptureFailed`
-    /// for any other engine or session error.
+    /// Throws whatever the provider throws. For ``AVMicrophoneInput`` that
+    /// includes ``SwiftWhisperCore/SwiftWhisperError/micPermissionDenied``,
+    /// ``SwiftWhisperCore/SwiftWhisperError/audioConversionFailed``, and
+    /// ``SwiftWhisperCore/SwiftWhisperError/audioCaptureFailed(_:)``.
     ///
     /// Calling more than once without ``stopCapture()`` is a no-op.
     public func startCapture() async throws(SwiftWhisperError) {
         guard !isCapturing else { return }
 
-        let granted = await Self.requestPermission()
-        guard granted else { throw .micPermissionDenied }
-
-        #if os(iOS)
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.record, mode: .measurement, options: [])
-            try session.setActive(true)
-        } catch {
-            throw .audioCaptureFailed("audio session: \(error.localizedDescription)")
-        }
-        installInterruptionObserver()
-        #endif
-
-        let inputFormat = box.engine.inputNode.outputFormat(forBus: 0)
-        guard inputFormat.sampleRate > 0 else {
-            throw .audioCaptureFailed("input format has zero sample rate; no microphone?")
-        }
-
-        guard
-            let outputFormat = AVAudioFormat(
-                commonFormat: .pcmFormatFloat32,
-                sampleRate: targetSampleRate,
-                channels: 1,
-                interleaved: false
-            ),
-            let converter = AVAudioConverter(from: inputFormat, to: outputFormat)
-        else {
-            throw .audioConversionFailed
-        }
-        box.converter = converter
-        box.outputFormat = outputFormat
-
-        let bufferSize = AVAudioFrameCount(max(256, inputFormat.sampleRate * bufferDurationSeconds))
+        let started = Date().timeIntervalSince1970
+        startTimestamp = started
         let cont = continuation
         let target = targetSampleRate
-        let inputRate = inputFormat.sampleRate
-        let started = Date().timeIntervalSince1970
-        let box = self.box
-        startTimestamp = started
 
-        box.engine.inputNode.installTap(
-            onBus: 0,
-            bufferSize: bufferSize,
-            format: inputFormat
-        ) { @Sendable buffer, _ in
-            guard
-                let convertedSamples = box.convert(buffer: buffer, sourceRate: inputRate, targetRate: target)
-            else { return }
+        try await provider.start(
+            targetSampleRate: targetSampleRate,
+            bufferDurationSeconds: bufferDurationSeconds
+        ) { @Sendable samples in
             let timestamp = Date().timeIntervalSince1970 - started
-            cont.yield(AudioChunk(samples: convertedSamples, sampleRate: Int(target), timestamp: timestamp))
+            cont.yield(
+                AudioChunk(samples: samples, sampleRate: Int(target), timestamp: timestamp)
+            )
         }
-        box.tapInstalled = true
-
-        do {
-            box.engine.prepare()
-            try box.engine.start()
-            isCapturing = true
-        } catch {
-            box.teardown()
-            throw .audioCaptureFailed("engine start: \(error.localizedDescription)")
-        }
+        isCapturing = true
     }
 
-    /// Stops the engine, removes the tap, deactivates the audio session (iOS),
-    /// and finishes ``audioStream``. Idempotent.
+    /// Stops the provider and finishes ``audioStream``. Idempotent.
     public func stopCapture() async {
         guard isCapturing else { return }
-        box.teardown()
+        await provider.stop()
         isCapturing = false
-
-        #if os(iOS)
-        if let observer = interruptionObserver {
-            NotificationCenter.default.removeObserver(observer)
-            interruptionObserver = nil
-        }
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        #endif
-
         continuation.finish()
     }
-
-    // MARK: - Permission
-
-    private static func requestPermission() async -> Bool {
-        let status = AVCaptureDevice.authorizationStatus(for: .audio)
-        switch status {
-        case .authorized:
-            return true
-        case .notDetermined:
-            return await AVCaptureDevice.requestAccess(for: .audio)
-        case .denied, .restricted:
-            return false
-        @unknown default:
-            return false
-        }
-    }
-
-    // MARK: - Interruption (iOS only)
-
-    #if os(iOS)
-    private func installInterruptionObserver() {
-        let box = self.box
-        interruptionObserver = NotificationCenter.default.addObserver(
-            forName: AVAudioSession.interruptionNotification,
-            object: nil,
-            queue: nil
-        ) { notification in
-            guard
-                let info = notification.userInfo,
-                let raw = info[AVAudioSessionInterruptionTypeKey] as? UInt,
-                let type = AVAudioSession.InterruptionType(rawValue: raw)
-            else { return }
-            switch type {
-            case .began:
-                box.engine.pause()
-            case .ended:
-                try? box.engine.start()
-            @unknown default:
-                break
-            }
-        }
-    }
-    #endif
 }
-
-// MARK: - CaptureBox
-
-/// Wraps non-`Sendable` AVFoundation refs. Mutable fields are written once on
-/// the actor before the tap installs, then read-only from the audio thread.
-private final class CaptureBox: @unchecked Sendable {
-    let engine = AVAudioEngine()
-    var converter: AVAudioConverter?
-    var outputFormat: AVAudioFormat?
-    var tapInstalled = false
-
-    /// Returns `nil` on failure because the tap callback can't propagate Swift errors.
-    func convert(
-        buffer: AVAudioPCMBuffer,
-        sourceRate: Double,
-        targetRate: Double
-    ) -> [Float]? {
-        guard let converter, let outputFormat else { return nil }
-        let ratio = targetRate / sourceRate
-        let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio + 32)
-        guard let outBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: capacity) else {
-            return nil
-        }
-
-        var error: NSError?
-        let consumed = Atomic<Bool>(false)
-        let status = converter.convert(to: outBuffer, error: &error) { _, outStatus in
-            if consumed.load(ordering: .relaxed) {
-                outStatus.pointee = .noDataNow
-                return nil
-            }
-            consumed.store(true, ordering: .relaxed)
-            outStatus.pointee = .haveData
-            return buffer
-        }
-
-        guard error == nil, status != .error, let data = outBuffer.floatChannelData?[0] else {
-            return nil
-        }
-        let count = Int(outBuffer.frameLength)
-        guard count > 0 else { return nil }
-        return Array(UnsafeBufferPointer(start: data, count: count))
-    }
-
-    func teardown() {
-        if tapInstalled {
-            engine.inputNode.removeTap(onBus: 0)
-            tapInstalled = false
-        }
-        if engine.isRunning {
-            engine.stop()
-        }
-        converter = nil
-    }
-}
-

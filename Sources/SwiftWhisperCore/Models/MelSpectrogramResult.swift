@@ -29,10 +29,13 @@ public struct MelSpectrogramResult: Sendable, Equatable {
     /// once enough audio has accumulated.
     public let nFrames: Int
 
-    /// Traps if `frames.count != nMels * nFrames`, since that would indicate a
-    /// buffer the layout cannot interpret.
-    public init(frames: [Float], nMels: Int, nFrames: Int) {
-        precondition(frames.count == nMels * nFrames, "frames length must equal nMels * nFrames")
+    /// Throws ``SwiftWhisperError/invalidMelDimensions(framesCount:expected:)``
+    /// if `frames.count != nMels * nFrames`.
+    public init(frames: [Float], nMels: Int, nFrames: Int) throws(SwiftWhisperError) {
+        let expected = nMels * nFrames
+        guard frames.count == expected else {
+            throw .invalidMelDimensions(framesCount: frames.count, expected: expected)
+        }
         self.frames = frames
         self.nMels = nMels
         self.nFrames = nFrames

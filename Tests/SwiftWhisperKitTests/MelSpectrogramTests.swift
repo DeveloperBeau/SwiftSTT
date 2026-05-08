@@ -51,7 +51,7 @@ struct MelSpectrogramTests {
 
     @Test("1 second of 16kHz audio produces ~98 frames")
     func frameCount() async throws {
-        let mel = MelSpectrogram()
+        let mel = try MelSpectrogram()
         let result = try await mel.process(chunk: Self.sine(frequency: 440, samples: 16_000))
         // (16000 - 400) / 160 + 1 = 98
         #expect(result.nFrames == 98)
@@ -61,10 +61,10 @@ struct MelSpectrogramTests {
 
     @Test("Carry-over: two half-chunks equal one full chunk in frame count")
     func carryoverEquivalence() async throws {
-        let melA = MelSpectrogram()
+        let melA = try MelSpectrogram()
         let resultA = try await melA.process(chunk: Self.sine(frequency: 440, samples: 16_000))
 
-        let melB = MelSpectrogram()
+        let melB = try MelSpectrogram()
         let half1 = Self.sine(frequency: 440, samples: 8_000)
         let half2Samples = (8_000..<16_000).map { i in
             Float(0.5) * sinf(2 * .pi * 440 * Float(i) / Float(16_000))
@@ -77,7 +77,7 @@ struct MelSpectrogramTests {
 
     @Test("Reset clears leftover")
     func resetClearsLeftover() async throws {
-        let mel = MelSpectrogram()
+        let mel = try MelSpectrogram()
         // Feed 500 samples: 1 frame consumed, 100 leftover (after 1 hop).
         // Actually: pos 0 -> frame 0..400, then pos 160 -> needs 160..560 but only 500 -> stop. leftover = 160..500 = 340.
         _ = try await mel.process(chunk: Self.sine(frequency: 440, samples: 500))
@@ -89,7 +89,7 @@ struct MelSpectrogramTests {
 
     @Test("Empty chunk produces empty result")
     func emptyChunk() async throws {
-        let mel = MelSpectrogram()
+        let mel = try MelSpectrogram()
         let result = try await mel.process(chunk: AudioChunk(samples: [], sampleRate: 16_000, timestamp: 0))
         #expect(result.nFrames == 0)
         #expect(result.frames.isEmpty)
@@ -99,7 +99,7 @@ struct MelSpectrogramTests {
 
     @Test("Output range is exactly 2.0 wide (Whisper normalization invariant)")
     func rangeWidth() async throws {
-        let mel = MelSpectrogram()
+        let mel = try MelSpectrogram()
         let result = try await mel.process(chunk: Self.sine(frequency: 440, samples: 16_000, amplitude: 0.9))
         let minVal = result.frames.min()!
         let maxVal = result.frames.max()!
@@ -110,7 +110,7 @@ struct MelSpectrogramTests {
 
     @Test("All output values are finite")
     func valuesFinite() async throws {
-        let mel = MelSpectrogram()
+        let mel = try MelSpectrogram()
         let result = try await mel.process(chunk: Self.sine(frequency: 440, samples: 16_000, amplitude: 0.9))
         for v in result.frames {
             #expect(v.isFinite)
@@ -119,7 +119,7 @@ struct MelSpectrogramTests {
 
     @Test("Peak mel band for 440Hz is in lower third of bands")
     func peakBandFor440Hz() async throws {
-        let mel = MelSpectrogram(nMels: 80)
+        let mel = try MelSpectrogram(nMels: 80)
         let result = try await mel.process(chunk: Self.sine(frequency: 440, samples: 16_000, amplitude: 0.9))
 
         // For each mel band, sum across all time frames.

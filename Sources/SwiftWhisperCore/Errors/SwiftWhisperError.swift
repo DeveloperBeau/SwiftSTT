@@ -30,4 +30,16 @@ public enum SwiftWhisperError: Error, Sendable, Equatable {
     /// The decoder failed mid-generation. The associated string describes the failure
     /// (KV cache mismatch, NaN output, sampler error).
     case decoderFailure(String)
+
+    /// `MelSpectrogramResult` was built with `frames.count != nMels * nFrames`.
+    /// Carries the actual count and the count the layout requires.
+    case invalidMelDimensions(framesCount: Int, expected: Int)
+
+    /// `vDSP.DiscreteFourierTransform` rejected the requested setup. Carries the
+    /// underlying error string.
+    case fftSetupFailed(String)
+
+    /// `FFTProcessor.process` was called with a frame whose length doesn't match
+    /// the configured `frameLength`.
+    case fftFrameSizeMismatch(got: Int, expected: Int)
 }
