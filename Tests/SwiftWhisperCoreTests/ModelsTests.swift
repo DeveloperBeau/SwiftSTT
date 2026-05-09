@@ -32,8 +32,9 @@ struct ModelsTests {
         let opts = DecodingOptions.default
         #expect(opts.task == .transcribe)
         #expect(opts.temperature == 0.0)
-        #expect(opts.beamSize == 5)
+        #expect(opts.beamSize == 1)
         #expect(opts.suppressBlank == true)
+        #expect(opts.withoutTimestamps == true)
     }
 
     @Test("TaskKind cases")
