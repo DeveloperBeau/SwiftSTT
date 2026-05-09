@@ -10,21 +10,6 @@ import SwiftWhisperCore
 @Suite("Stub coverage")
 struct StubTests {
 
-    // MARK: - WhisperDecoder
-
-    @Test("WhisperDecoder.decode throws notImplemented")
-    func decoderThrows() async throws {
-        let decoder = WhisperDecoder()
-        // Build a minimal valid MLMultiArray so we get past the type check.
-        let array = try MLMultiArray(shape: [1], dataType: .float32)
-        do {
-            _ = try await decoder.decode(encoderOutput: array, options: .default)
-            Issue.record("expected throw")
-        } catch {
-            #expect(error == .notImplemented)
-        }
-    }
-
     // MARK: - SileroVAD
 
     @Test("SileroVAD stub always reports silence")
