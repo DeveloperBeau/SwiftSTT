@@ -39,13 +39,24 @@ public struct DecodingOptions: Sendable, Equatable {
     /// to about `0.6` are useful when greedy gets caught in a repetition loop.
     public var temperature: Float
 
-    /// Beam search width. `1` is greedy. Higher values trade compute for accuracy;
-    /// `5` is the reference default.
+    /// Beam search width. `1` is greedy or temperature sampling depending on
+    /// ``temperature``. Higher values trade compute for accuracy.
+    ///
+    /// SwiftWhisper's beam path shares a single Core ML KV cache between beams
+    /// and re-prefills per step, so values above `1` are functionally correct
+    /// but slow. The reference Python implementation defaults to `5`; this port
+    /// defaults to `1` until per-beam state lands.
     public var beamSize: Int
 
     /// Whether to feed the decoder a `<|prevtimestamp|>` prefix from the previous
     /// segment. Helps consistency across long audio at the cost of one extra token.
     public var usePrefixTimestamps: Bool
+
+    /// When `true` (the default), the decoder injects `<|notimestamps|>` into the
+    /// prompt prefix and Whisper produces text-only output. Set to `false` to make
+    /// the decoder emit timestamp tokens for `parseSegments` to split into
+    /// ``TranscriptionSegment`` boundaries.
+    public var withoutTimestamps: Bool
 
     /// Whether to suppress the blank token at position 0. Disabling this lets the
     /// decoder emit silence as empty output, which is occasionally useful for
@@ -60,10 +71,11 @@ public struct DecodingOptions: Sendable, Equatable {
         language: String? = nil,
         task: TaskKind = .transcribe,
         temperature: Float = 0.0,
-        beamSize: Int = 5,
+        beamSize: Int = 1,
         usePrefixTimestamps: Bool = true,
         suppressBlank: Bool = true,
-        suppressTokens: [Int] = []
+        suppressTokens: [Int] = [],
+        withoutTimestamps: Bool = true
     ) {
         self.language = language
         self.task = task
@@ -72,6 +84,7 @@ public struct DecodingOptions: Sendable, Equatable {
         self.usePrefixTimestamps = usePrefixTimestamps
         self.suppressBlank = suppressBlank
         self.suppressTokens = suppressTokens
+        self.withoutTimestamps = withoutTimestamps
     }
 
     /// Sensible defaults for English transcription with beam search.

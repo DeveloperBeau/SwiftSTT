@@ -52,4 +52,9 @@ public enum SwiftWhisperError: Error, Sendable, Equatable {
 
     /// An expected file was not found in the model cache directory after download.
     case modelFileMissing(String)
+
+    /// A `DecodingOptions` value was rejected by the decoder. The associated string
+    /// names the offending field and the rule it violated (e.g. negative temperature,
+    /// `beamSize < 1`, or an unsupported combination of beam search with sampling).
+    case invalidDecodingOption(String)
 }
