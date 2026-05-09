@@ -23,8 +23,8 @@ public protocol StatefulCoreMLModelRunner: Sendable {
 
     /// Runs one forward pass against the current state, mutating the cache.
     func predict(
-        features: MLFeatureProvider
-    ) async throws(SwiftWhisperError) -> MLFeatureProvider
+        features: any MLFeatureProvider
+    ) async throws(SwiftWhisperError) -> any MLFeatureProvider
 }
 
 /// Production runner that delegates to a Core ML `MLModel` carrying an
@@ -53,8 +53,8 @@ public final class MLStateModelRunner: StatefulCoreMLModelRunner, @unchecked Sen
     }
 
     public func predict(
-        features: MLFeatureProvider
-    ) async throws(SwiftWhisperError) -> MLFeatureProvider {
+        features: any MLFeatureProvider
+    ) async throws(SwiftWhisperError) -> any MLFeatureProvider {
         let cached = state.withLock { $0 }
         guard let cached else {
             throw .decoderFailure("MLStateModelRunner: state not initialised; call resetState() first")

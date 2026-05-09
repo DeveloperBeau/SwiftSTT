@@ -64,7 +64,7 @@ public actor WhisperEncoder: AudioEncoding {
     /// and wraps it as a feature provider.
     static func buildFeatureProvider(
         mel: MelSpectrogramResult
-    ) throws(SwiftWhisperError) -> MLFeatureProvider {
+    ) throws(SwiftWhisperError) -> any MLFeatureProvider {
         let array: MLMultiArray
         do {
             array = try MLMultiArray(
@@ -89,7 +89,7 @@ public actor WhisperEncoder: AudioEncoding {
 
     /// Pulls the encoder output tensor out of the model's response.
     static func extractEmbeddings(
-        from output: MLFeatureProvider
+        from output: any MLFeatureProvider
     ) throws(SwiftWhisperError) -> MLMultiArray {
         guard let value = output.featureValue(for: outputFeatureName) else {
             throw .decoderFailure("missing feature '\(outputFeatureName)' in encoder output")

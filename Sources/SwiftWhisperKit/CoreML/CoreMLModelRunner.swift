@@ -12,8 +12,8 @@ public protocol CoreMLModelRunner: Sendable {
 
     /// Runs one forward pass.
     func predict(
-        features: MLFeatureProvider
-    ) async throws(SwiftWhisperError) -> MLFeatureProvider
+        features: any MLFeatureProvider
+    ) async throws(SwiftWhisperError) -> any MLFeatureProvider
 }
 
 /// Production runner that delegates to a Core ML `MLModel`.
@@ -26,8 +26,8 @@ public struct MLModelRunner: CoreMLModelRunner {
     }
 
     public func predict(
-        features: MLFeatureProvider
-    ) async throws(SwiftWhisperError) -> MLFeatureProvider {
+        features: any MLFeatureProvider
+    ) async throws(SwiftWhisperError) -> any MLFeatureProvider {
         do {
             return try await model.prediction(from: features)
         } catch {

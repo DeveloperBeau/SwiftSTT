@@ -69,8 +69,8 @@ private final class MockStatefulRunner: StatefulCoreMLModelRunner, @unchecked Se
     }
 
     func predict(
-        features: MLFeatureProvider
-    ) async throws(SwiftWhisperError) -> MLFeatureProvider {
+        features: any MLFeatureProvider
+    ) async throws(SwiftWhisperError) -> any MLFeatureProvider {
         let token = features.featureValue(for: tokenInputName)?.multiArrayValue
         let cache = features.featureValue(for: cacheLengthName)?.multiArrayValue
         let tokenId = token.map { $0[[0, 0] as [NSNumber]].int32Value } ?? -1
@@ -144,7 +144,7 @@ private func oneHotLogits(vocabSize: Int, hot: Int, value: Float = 10) -> [Float
     return out
 }
 
-private func makeLogitsProvider(values: [Float], name: String = "logits") throws -> MLFeatureProvider {
+private func makeLogitsProvider(values: [Float], name: String = "logits") throws -> any MLFeatureProvider {
     let array = try MLMultiArray(
         shape: [1, 1, NSNumber(value: values.count)],
         dataType: .float32

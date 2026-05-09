@@ -30,8 +30,8 @@ private final class MockRunner: CoreMLModelRunner, @unchecked Sendable {
     var lastInputArray: MLMultiArray? { state.withLock { $0.lastInputArray } }
 
     func predict(
-        features: MLFeatureProvider
-    ) async throws(SwiftWhisperError) -> MLFeatureProvider {
+        features: any MLFeatureProvider
+    ) async throws(SwiftWhisperError) -> any MLFeatureProvider {
         let array = features.featureValue(for: WhisperEncoder.inputFeatureName)?.multiArrayValue
         state.withLock {
             $0.callCount += 1

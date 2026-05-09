@@ -175,7 +175,7 @@ public actor WhisperDecoder: TokenDecoding {
         tokenId: Int,
         cacheLength: Int,
         names: FeatureNames
-    ) throws(SwiftWhisperError) -> MLFeatureProvider {
+    ) throws(SwiftWhisperError) -> any MLFeatureProvider {
         let tokenArray: MLMultiArray
         let cacheArray: MLMultiArray
         do {
@@ -201,7 +201,7 @@ public actor WhisperDecoder: TokenDecoding {
     /// Pulls logits from the model output and copies them into a flat
     /// `[Float]` for sampling.
     static func extractLogits(
-        from output: MLFeatureProvider,
+        from output: any MLFeatureProvider,
         name: String
     ) throws(SwiftWhisperError) -> [Float] {
         guard let value = output.featureValue(for: name) else {
