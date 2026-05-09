@@ -10,30 +10,6 @@ import SwiftWhisperCore
 @Suite("Stub coverage")
 struct StubTests {
 
-    // MARK: - ModelLoader
-
-    @Test("ModelLoader.loadEncoder throws notImplemented")
-    func modelLoaderEncoder() async {
-        let loader = ModelLoader()
-        do {
-            _ = try await loader.loadEncoder(at: URL(fileURLWithPath: "/dev/null"))
-            Issue.record("expected throw")
-        } catch {
-            #expect(error == .notImplemented)
-        }
-    }
-
-    @Test("ModelLoader.loadDecoder throws notImplemented")
-    func modelLoaderDecoder() async {
-        let loader = ModelLoader()
-        do {
-            _ = try await loader.loadDecoder(at: URL(fileURLWithPath: "/dev/null"))
-            Issue.record("expected throw")
-        } catch {
-            #expect(error == .notImplemented)
-        }
-    }
-
     // MARK: - WhisperEncoder
 
     @Test("WhisperEncoder.encode throws notImplemented")

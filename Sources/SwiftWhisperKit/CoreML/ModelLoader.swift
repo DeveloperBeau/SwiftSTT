@@ -1,39 +1,50 @@
-import CoreML
+@preconcurrency import CoreML
 import Foundation
 import SwiftWhisperCore
 
-/// Loads compiled Core ML Whisper models from disk.
+/// Loads compiled Core ML Whisper models from disk into memory.
 ///
-/// Whisper ships as a pair of models: an audio encoder (`AudioEncoder.mlmodelc`)
-/// and a text decoder (`TextDecoder.mlmodelc`). This loader handles both. Models
-/// load with `MLModelConfiguration.computeUnits = .all` so the Apple Neural
-/// Engine takes the encoder where available.
-///
-/// ## First-run latency
-///
-/// The Neural Engine compiles `.mlmodelc` packages on first use per device.
-/// For the small model this takes 30 to 60 seconds; the large turbo model can
-/// take two minutes. Surface this to the user with a progress indicator on
-/// first launch. Subsequent loads are instant because the compiled artefact is
-/// cached by the OS.
-///
-/// > Important: Stub. Real loader lands in milestone M4.
+/// The encoder runs on the Neural Engine when available (compute units = `.all`).
+/// First-run ANE compilation can take 30 to 120 seconds for large models; the
+/// OS caches the result for subsequent loads.
 public actor ModelLoader {
+
     public init() {}
 
-    /// Loads a compiled audio encoder model.
-    ///
-    /// - Parameter url: file URL to an `AudioEncoder.mlmodelc` directory.
-    /// - Returns: the compiled `MLModel`, ready to wire into ``WhisperEncoder``.
+    /// Loads a compiled audio encoder model from an `AudioEncoder.mlmodelc` directory.
     public func loadEncoder(at url: URL) async throws(SwiftWhisperError) -> MLModel {
-        throw .notImplemented
+        try await loadModel(at: url, label: "encoder")
     }
 
-    /// Loads a compiled text decoder model.
-    ///
-    /// - Parameter url: file URL to a `TextDecoder.mlmodelc` directory.
-    /// - Returns: the compiled `MLModel`, ready to wire into ``WhisperDecoder``.
+    /// Loads a compiled text decoder model from a `TextDecoder.mlmodelc` directory.
     public func loadDecoder(at url: URL) async throws(SwiftWhisperError) -> MLModel {
-        throw .notImplemented
+        try await loadModel(at: url, label: "decoder")
     }
+
+    /// Loads both encoder and decoder from a ``ModelBundle`` sequentially.
+    public func loadBundle(_ bundle: ModelBundle) async throws(SwiftWhisperError) -> LoadedModels {
+        let encoder = try await loadEncoder(at: bundle.encoderURL)
+        let decoder = try await loadDecoder(at: bundle.decoderURL)
+        return LoadedModels(encoder: encoder, decoder: decoder, tokenizerURL: bundle.tokenizerURL)
+    }
+
+    private func loadModel(at url: URL, label: String) async throws(SwiftWhisperError) -> MLModel {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw .modelLoadFailed("\(label) not found at \(url.path)")
+        }
+        let config = MLModelConfiguration()
+        config.computeUnits = .all
+        do {
+            return try await MLModel.load(contentsOf: url, configuration: config)
+        } catch {
+            throw .modelLoadFailed("\(label): \(error.localizedDescription)")
+        }
+    }
+}
+
+/// Loaded encoder and decoder pair, ready to wire into the pipeline.
+public struct LoadedModels {
+    public let encoder: MLModel
+    public let decoder: MLModel
+    public let tokenizerURL: URL
 }

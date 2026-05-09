@@ -42,4 +42,14 @@ public enum SwiftWhisperError: Error, Sendable, Equatable {
     /// `FFTProcessor.process` was called with a frame whose length doesn't match
     /// the configured `frameLength`.
     case fftFrameSizeMismatch(got: Int, expected: Int)
+
+    /// An HTTP or network error prevented a model download from completing.
+    case modelDownloadFailed(String)
+
+    /// A downloaded file's SHA256 hash does not match the expected value from
+    /// the HuggingFace listing.
+    case modelChecksumMismatch(file: String)
+
+    /// An expected file was not found in the model cache directory after download.
+    case modelFileMissing(String)
 }
