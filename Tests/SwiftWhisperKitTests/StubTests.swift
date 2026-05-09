@@ -10,20 +10,6 @@ import SwiftWhisperCore
 @Suite("Stub coverage")
 struct StubTests {
 
-    // MARK: - WhisperEncoder
-
-    @Test("WhisperEncoder.encode throws notImplemented")
-    func encoderThrows() async throws {
-        let encoder = WhisperEncoder()
-        let mel = try MelSpectrogramResult(frames: [], nMels: 0, nFrames: 0)
-        do {
-            _ = try await encoder.encode(spectrogram: mel)
-            Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
-            #expect(error == .notImplemented)
-        }
-    }
-
     // MARK: - WhisperDecoder
 
     @Test("WhisperDecoder.decode throws notImplemented")

@@ -1,27 +1,102 @@
-import CoreML
+@preconcurrency import CoreML
+import Foundation
 import SwiftWhisperCore
 
 /// Core ML implementation of the Whisper audio encoder.
 ///
-/// Wraps an `MLModel` loaded by ``ModelLoader``. Each forward pass:
+/// Each forward pass:
 ///
 /// 1. Pads or trims the input mel spectrogram to exactly 3000 frames (30 s).
-/// 2. Packs the mel features into an `MLMultiArray` with the model's expected
-///    shape (`[1, nMels, 3000]` for the standard models).
-/// 3. Runs `model.prediction(from:)`, which executes on the Neural Engine when
-///    available.
-/// 4. Returns the encoder embedding tensor.
+/// 2. Packs the mel features into an `MLMultiArray` with shape
+///    `[1, nMels, 3000]` under the feature name `melspectrogram_features`,
+///    matching the argmaxinc-converted models on HuggingFace.
+/// 3. Runs the model via the injected ``CoreMLModelRunner``.
+/// 4. Extracts the encoder embedding tensor from the output feature
+///    `encoder_output_embeds`.
 ///
 /// Encode latency on Apple Silicon is roughly 50 ms for the base model on the
-/// ANE, climbing to 300 ms for the large turbo model. Real-time factor on
-/// recent hardware sits at 0.05 to 0.1, so encoding rarely dominates the
-/// pipeline cost.
-///
-/// > Important: Stub. Real implementation lands in milestone M4.
+/// ANE, climbing to 300 ms for the large turbo model.
 public actor WhisperEncoder: AudioEncoding {
-    public init() {}
+
+    public static let expectedFrames: Int = 3_000
+    public static let inputFeatureName: String = "melspectrogram_features"
+    public static let outputFeatureName: String = "encoder_output_embeds"
+
+    private let runner: any CoreMLModelRunner
+
+    public init(runner: any CoreMLModelRunner) {
+        self.runner = runner
+    }
 
     public func encode(spectrogram: MelSpectrogramResult) async throws(SwiftWhisperError) -> MLMultiArray {
-        throw .notImplemented
+        let padded = try Self.padOrTrim(spectrogram, toFrames: Self.expectedFrames)
+        let input = try Self.buildFeatureProvider(mel: padded)
+        let output = try await runner.predict(features: input)
+        return try Self.extractEmbeddings(from: output)
+    }
+
+    // MARK: - Pure helpers (visible to tests)
+
+    /// Pads with zeros or trims to exactly `frames` time steps. Layout assumes
+    /// row-major `[nMels x nFrames]` per ``MelSpectrogramResult``.
+    static func padOrTrim(
+        _ spectrogram: MelSpectrogramResult,
+        toFrames frames: Int
+    ) throws(SwiftWhisperError) -> MelSpectrogramResult {
+        let nMels = spectrogram.nMels
+        let currentFrames = spectrogram.nFrames
+
+        if currentFrames == frames {
+            return spectrogram
+        }
+
+        var out = [Float](repeating: 0, count: nMels * frames)
+        let copyFrames = min(currentFrames, frames)
+        for m in 0..<nMels {
+            for t in 0..<copyFrames {
+                out[m * frames + t] = spectrogram.frames[m * currentFrames + t]
+            }
+        }
+        return try MelSpectrogramResult(frames: out, nMels: nMels, nFrames: frames)
+    }
+
+    /// Packs the mel buffer into an `MLMultiArray` of shape `[1, nMels, nFrames]`
+    /// and wraps it as a feature provider.
+    static func buildFeatureProvider(
+        mel: MelSpectrogramResult
+    ) throws(SwiftWhisperError) -> MLFeatureProvider {
+        let array: MLMultiArray
+        do {
+            array = try MLMultiArray(
+                shape: [1, NSNumber(value: mel.nMels), NSNumber(value: mel.nFrames)],
+                dataType: .float32
+            )
+        } catch {
+            throw .modelLoadFailed("MLMultiArray init: \(error.localizedDescription)")
+        }
+        let pointer = array.dataPointer.bindMemory(to: Float.self, capacity: mel.frames.count)
+        for i in 0..<mel.frames.count {
+            pointer[i] = mel.frames[i]
+        }
+        do {
+            return try MLDictionaryFeatureProvider(dictionary: [
+                inputFeatureName: array,
+            ])
+        } catch {
+            throw .modelLoadFailed("feature provider: \(error.localizedDescription)")
+        }
+    }
+
+    /// Pulls the encoder output tensor out of the model's response.
+    static func extractEmbeddings(
+        from output: MLFeatureProvider
+    ) throws(SwiftWhisperError) -> MLMultiArray {
+        guard let value = output.featureValue(for: outputFeatureName) else {
+            throw .decoderFailure("missing feature '\(outputFeatureName)' in encoder output")
+        }
+        guard let array = value.multiArrayValue else {
+            throw .decoderFailure("feature '\(outputFeatureName)' is not an MLMultiArray")
+        }
+        return array
     }
 }
