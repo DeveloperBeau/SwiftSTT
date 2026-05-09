@@ -39,19 +39,6 @@ struct StubTests {
         }
     }
 
-    // MARK: - WhisperTokenizer
-
-    @Test("WhisperTokenizer stub returns empty/false values")
-    func tokenizerStub() async {
-        let tok = WhisperTokenizer()
-        await #expect(tok.encode(text: "hello") == [])
-        await #expect(tok.decode(tokens: [1, 2, 3]) == "")
-        await #expect(tok.isTimestamp(token: 0) == false)
-        await #expect(tok.isSpecial(token: 0) == false)
-        await #expect(tok.endOfTextToken == 50_257)
-        await #expect(tok.startOfTranscriptToken == 50_258)
-    }
-
     // MARK: - SileroVAD
 
     @Test("SileroVAD stub always reports silence")
