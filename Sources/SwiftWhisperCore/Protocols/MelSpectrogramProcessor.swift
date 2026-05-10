@@ -20,4 +20,17 @@ public protocol MelSpectrogramProcessor: Actor {
     /// Drops any carried-over samples. Call after a stream restart so the next
     /// frame starts at sample zero rather than at an offset from the previous run.
     func reset() async
+
+    /// Number of mel frames currently held in the rolling buffer.
+    func currentFrameCount() async -> Int
+
+    /// Returns a flattened copy of the rolling buffer in `[nMels x nFrames]`
+    /// row-major layout. Throws if the rolling buffer's bookkeeping is
+    /// inconsistent (defensive: should be unreachable on a correctly-implemented
+    /// processor).
+    func snapshot() async throws(SwiftWhisperError) -> MelSpectrogramResult
+
+    /// Drops the first `framesConsumed` columns from the rolling buffer. Used
+    /// by the pipeline to slide the encoder window after a successful decode.
+    func advance(framesConsumed: Int) async
 }
