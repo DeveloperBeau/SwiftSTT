@@ -135,7 +135,7 @@ struct AVAudioCaptureTests {
         do {
             try await capture.startCapture()
             Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
+        } catch {
             #expect(error == .audioCaptureFailed("boom"))
         }
     }
@@ -147,7 +147,7 @@ struct AVAudioCaptureTests {
         do {
             try await capture.startCapture()
             Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
+        } catch {
             #expect(error == .micPermissionDenied)
         }
     }

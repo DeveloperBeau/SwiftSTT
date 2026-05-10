@@ -15,7 +15,7 @@ struct ModelLoaderTests {
         do {
             _ = try await loader.loadEncoder(at: fake)
             Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
+        } catch {
             if case .modelLoadFailed = error {
             } else {
                 Issue.record("wrong error: \(error)")
@@ -30,7 +30,7 @@ struct ModelLoaderTests {
         do {
             _ = try await loader.loadDecoder(at: fake)
             Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
+        } catch {
             if case .modelLoadFailed = error {
             } else {
                 Issue.record("wrong error: \(error)")
@@ -52,7 +52,7 @@ struct ModelLoaderTests {
         do {
             _ = try await loader.loadBundle(bundle)
             Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
+        } catch {
             if case .modelLoadFailed = error {
             } else {
                 Issue.record("wrong error: \(error)")

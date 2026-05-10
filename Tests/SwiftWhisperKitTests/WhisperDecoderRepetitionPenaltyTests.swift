@@ -87,7 +87,7 @@ struct WhisperDecoderRepetitionPenaltyTests {
         do {
             try WhisperDecoder.validate(options: options)
             Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
+        } catch {
             if case .invalidDecodingOption = error {
             } else {
                 Issue.record("wrong error: \(error)")
@@ -102,7 +102,7 @@ struct WhisperDecoderRepetitionPenaltyTests {
         do {
             try WhisperDecoder.validate(options: options)
             Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
+        } catch {
             if case .invalidDecodingOption = error {
             } else {
                 Issue.record("wrong error: \(error)")

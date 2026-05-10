@@ -345,7 +345,7 @@ struct WhisperDecoderTests {
         do {
             _ = try await decoder.decode(encoderOutput: encoder, options: .default)
             Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
+        } catch {
             #expect(error == .decoderFailure("boom"))
         }
     }
@@ -456,7 +456,7 @@ struct WhisperDecoderTests {
         do {
             _ = try WhisperDecoder.extractLogits(from: provider, name: "logits")
             Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
+        } catch {
             if case .decoderFailure = error {
             } else {
                 Issue.record("wrong error: \(error)")
@@ -472,7 +472,7 @@ struct WhisperDecoderTests {
         do {
             _ = try WhisperDecoder.extractLogits(from: provider, name: "logits")
             Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
+        } catch {
             if case .decoderFailure = error {
             } else {
                 Issue.record("wrong error: \(error)")
