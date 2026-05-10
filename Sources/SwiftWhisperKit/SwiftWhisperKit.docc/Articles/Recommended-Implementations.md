@@ -33,14 +33,18 @@ final class DictationViewModel: ObservableObject {
         let bundle = try await downloader.bundle(for: .base)
         let loader = ModelLoader()
         let loaded = try await loader.loadBundle(bundle)
+        let tokenizer = try WhisperTokenizer(contentsOf: loaded.tokenizerURL)
 
         let pipeline = TranscriptionPipeline(
             audioInput: AVMicrophoneInput(),
             vad: EnergyVAD(),
-            melSpectrogram: MelSpectrogram(),
-            encoder: WhisperEncoder(runner: loaded.encoderRunner),
-            decoder: WhisperDecoder(runner: loaded.decoderRunner, tokenizer: loaded.tokenizer),
-            tokenizer: loaded.tokenizer,
+            melSpectrogram: try MelSpectrogram(),
+            encoder: WhisperEncoder(runner: MLModelRunner(model: loaded.encoder)),
+            decoder: WhisperDecoder(
+                runner: MLStateModelRunner(model: loaded.decoder),
+                tokenizer: tokenizer
+            ),
+            tokenizer: tokenizer,
             policy: LocalAgreementPolicy()
         )
         self.pipeline = pipeline
@@ -67,7 +71,7 @@ Tips:
 
 Best for: voice notes, podcast import, video subtitling.
 
-You skip the `TranscriptionPipeline` and call the encoder + decoder directly on a precomputed mel spectrogram.
+Drive `TranscriptionPipeline` with an ``AudioFileInput`` instead of a microphone. The pipeline already slides a 30-second window internally, so a single `start()` call walks the whole file and emits stitched segments.
 
 ```swift
 import SwiftWhisperCore
@@ -78,63 +82,44 @@ func transcribe(file url: URL) async throws -> [TranscriptionSegment] {
     let bundle = try await downloader.bundle(for: .base)
     let loader = ModelLoader()
     let loaded = try await loader.loadBundle(bundle)
+    let tokenizer = try WhisperTokenizer(contentsOf: loaded.tokenizerURL)
 
-    let input = AudioFileInput(url: url)
-    let samples = try await input.readAllSamples(targetSampleRate: 16_000)
-
-    let chunk = AudioChunk(samples: samples, sampleRate: 16_000, timestamp: 0)
-    let mel = try await MelSpectrogram().process(chunk: chunk)
-    let encoded = try await WhisperEncoder(runner: loaded.encoderRunner)
-        .encode(spectrogram: mel)
-
-    var options = DecodingOptions.default
-    options.withoutTimestamps = false
-    let decoder = WhisperDecoder(runner: loaded.decoderRunner, tokenizer: loaded.tokenizer)
-    let tokens = try await decoder.decode(encoderOutput: encoded, options: options)
-
-    return WhisperDecoder.parseSegments(
-        tokens: tokens,
-        tokenizer: loaded.tokenizer,
-        windowOffsetSeconds: 0
+    let audioInput = AudioFileInput(fileURL: url)
+    let pipeline = TranscriptionPipeline(
+        audioInput: audioInput,
+        vad: EnergyVAD(),
+        melSpectrogram: try MelSpectrogram(),
+        encoder: WhisperEncoder(runner: MLModelRunner(model: loaded.encoder)),
+        decoder: WhisperDecoder(
+            runner: MLStateModelRunner(model: loaded.decoder),
+            tokenizer: tokenizer
+        ),
+        tokenizer: tokenizer,
+        policy: LocalAgreementPolicy()
     )
+
+    let stream = try await pipeline.start()
+    var segments: [TranscriptionSegment] = []
+    let consumer = Task {
+        for await segment in stream { segments.append(segment) }
+    }
+
+    await audioInput.waitUntilComplete()
+    await pipeline.stop()
+    await consumer.value
+    return segments
 }
 ```
 
-Whisper expects 16 kHz mono `Float` audio in the range `[-1.0, 1.0]`. `AudioFileInput` handles the resampling.
+Whisper expects 16 kHz mono `Float` audio in the range `[-1.0, 1.0]`. `AudioFileInput` resamples on the fly via `AVAudioConverter`. WAV, AIFF, and CAF are well-tested; M4A works when the platform codec is available.
 
-For files longer than 30 seconds, slide a 30-second window with a 5-second overlap:
-
-```swift
-let windowSeconds: TimeInterval = 30
-let strideSeconds: TimeInterval = 25
-var windowStart: TimeInterval = 0
-var allSegments: [TranscriptionSegment] = []
-
-while Int(windowStart * 16_000) < samples.count {
-    let startIndex = Int(windowStart * 16_000)
-    let endIndex = min(samples.count, startIndex + Int(windowSeconds * 16_000))
-    let window = Array(samples[startIndex..<endIndex])
-
-    let chunk = AudioChunk(samples: window, sampleRate: 16_000, timestamp: windowStart)
-    let mel = try await MelSpectrogram().process(chunk: chunk)
-    let encoded = try await encoder.encode(spectrogram: mel)
-    let tokens = try await decoder.decode(encoderOutput: encoded, options: options)
-    allSegments.append(contentsOf: WhisperDecoder.parseSegments(
-        tokens: tokens,
-        tokenizer: loaded.tokenizer,
-        windowOffsetSeconds: windowStart
-    ))
-    windowStart += strideSeconds
-}
-```
-
-`parseSegments` adds the window offset to every segment's `start` and `end`, so all timestamps come out in absolute file time.
+For files longer than 30 seconds the pipeline keeps a rolling 30-second mel buffer and advances the cursor as decode windows complete, so segment timestamps come out in absolute file time without manual stitching.
 
 ## Meeting capture with segment stitching
 
 Best for: long meetings, lectures, podcasts captured live.
 
-This combines the live mic pipeline with the windowing approach above. The pipeline already runs on a sliding window internally, but for meetings you typically want timestamp-bearing segments that survive a one-hour conversation.
+The pipeline already slides a 30-second window internally. For meetings you usually want timestamp-bearing segments that survive a one-hour conversation, plus larger decode intervals to reduce CPU pressure.
 
 ```swift
 var options = DecodingOptions.default
@@ -144,12 +129,13 @@ options.temperature = 0.4   // helps with cross-talk and reverberation
 let pipeline = TranscriptionPipeline(
     audioInput: AVMicrophoneInput(),
     vad: EnergyVAD(),
-    melSpectrogram: MelSpectrogram(),
+    melSpectrogram: try MelSpectrogram(),
     encoder: encoder,
     decoder: decoder,
     tokenizer: tokenizer,
     policy: LocalAgreementPolicy(),
     options: options,
+    emissionMode: .timestampSegments,
     decodeIntervalSeconds: 2.0,         // less frequent decodes for less CPU
     maxBufferedFrames: 30 * 100         // cap at 30 s of audio per decode
 )

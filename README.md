@@ -77,14 +77,18 @@ final class Dictation {
 
         let bundle = try await downloader.bundle(for: model)
         let loaded = try await ModelLoader().loadBundle(bundle)
+        let tokenizer = try WhisperTokenizer(contentsOf: loaded.tokenizerURL)
 
         let pipeline = TranscriptionPipeline(
             audioInput: AVMicrophoneInput(),
             vad: EnergyVAD(),
             melSpectrogram: try MelSpectrogram(),
-            encoder: WhisperEncoder(runner: loaded.encoderRunner),
-            decoder: WhisperDecoder(runner: loaded.decoderRunner, tokenizer: loaded.tokenizer),
-            tokenizer: loaded.tokenizer,
+            encoder: WhisperEncoder(runner: MLModelRunner(model: loaded.encoder)),
+            decoder: WhisperDecoder(
+                runner: MLStateModelRunner(model: loaded.decoder),
+                tokenizer: tokenizer
+            ),
+            tokenizer: tokenizer,
             policy: LocalAgreementPolicy()
         )
         self.pipeline = pipeline
@@ -162,7 +166,7 @@ Three SPM targets:
 swift test
 ```
 
-437 tests in 49 suites finish in roughly 11 seconds on an M-series Mac. The full suite is mock-driven: no model download is required and no Core ML weights are loaded. Tests cover the encoder/decoder feature plumbing, beam search, sampling, timestamp parsing, VAD, mel spectrogram numerics, audio decoding, CLI argument parsing, and all seven output formatters.
+437 unit tests in 49 suites finish in roughly 11 seconds on an M-series Mac. The full suite is mock-driven: no model download is required and no Core ML weights are loaded. Tests cover the encoder/decoder feature plumbing, beam search, sampling, timestamp parsing, VAD, mel spectrogram numerics, audio decoding, CLI argument parsing, and all seven output formatters.
 
 A separate integration test target runs the real `.mlmodelc` end-to-end. It is gated by an environment variable so default `swift test` skips it:
 

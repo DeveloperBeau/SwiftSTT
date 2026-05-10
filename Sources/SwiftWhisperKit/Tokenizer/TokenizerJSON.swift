@@ -14,6 +14,7 @@ public struct TokenizerJSON: Decodable, Sendable {
         case addedTokens = "added_tokens"
     }
 
+    /// The `model` block of `tokenizer.json`: vocabulary and merge rules.
     public struct Model: Decodable, Sendable {
         public let vocab: [String: Int]
         public let merges: [Merge]
@@ -45,6 +46,7 @@ public struct TokenizerJSON: Decodable, Sendable {
         }
     }
 
+    /// One entry from `added_tokens`, used for special tokens (BOS, EOT, etc).
     public struct AddedToken: Decodable, Sendable {
         public let id: Int
         public let content: String
