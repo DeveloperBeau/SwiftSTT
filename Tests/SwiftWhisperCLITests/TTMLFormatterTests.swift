@@ -1,7 +1,8 @@
 import Foundation
-import Testing
-@testable import SwiftWhisperCLI
 import SwiftWhisperCore
+import Testing
+
+@testable import SwiftWhisperCLI
 
 @Suite("TTMLFormatter")
 struct TTMLFormatterTests {
@@ -10,7 +11,7 @@ struct TTMLFormatterTests {
     func preamble() throws {
         let formatter = TTMLFormatter()
         let segments = [
-            TranscriptionSegment(text: "hello", start: 0, end: 1),
+            TranscriptionSegment(text: "hello", start: 0, end: 1)
         ]
         let doc = try #require(formatter.footer(segments: segments))
         #expect(doc.hasPrefix("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"))

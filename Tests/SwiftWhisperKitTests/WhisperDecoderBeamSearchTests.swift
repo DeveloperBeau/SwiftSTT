@@ -1,9 +1,10 @@
 @preconcurrency import CoreML
 import Foundation
+import SwiftWhisperCore
 import Synchronization
 import Testing
+
 @testable import SwiftWhisperKit
-import SwiftWhisperCore
 
 // MARK: - Beam-aware mock runner
 
@@ -95,7 +96,9 @@ private func makeTokenizer() -> WhisperTokenizer {
     WhisperTokenizer(specialTokens: defaultSpecials)
 }
 
-private func makeEncoderArray(shape: [Int] = [1, 1500, 16], fill: Float = 0.0) throws -> MLMultiArray {
+private func makeEncoderArray(shape: [Int] = [1, 1500, 16], fill: Float = 0.0) throws
+    -> MLMultiArray
+{
     let array = try MLMultiArray(
         shape: shape.map { NSNumber(value: $0) },
         dataType: .float32
@@ -263,7 +266,8 @@ struct WhisperDecoderBeamSearchTests {
             _ = try await decoder.decode(encoderOutput: encoder, options: options)
             Issue.record("expected throw")
         } catch let error as SwiftWhisperError {
-            if case .invalidDecodingOption = error {} else {
+            if case .invalidDecodingOption = error {
+            } else {
                 Issue.record("wrong error: \(error)")
             }
         }
@@ -286,7 +290,8 @@ struct WhisperDecoderBeamSearchTests {
             _ = try await decoder.decode(encoderOutput: encoder, options: options)
             Issue.record("expected throw")
         } catch let error as SwiftWhisperError {
-            if case .invalidDecodingOption = error {} else {
+            if case .invalidDecodingOption = error {
+            } else {
                 Issue.record("wrong error: \(error)")
             }
         }

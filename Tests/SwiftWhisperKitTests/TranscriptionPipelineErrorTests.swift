@@ -1,9 +1,10 @@
 @preconcurrency import CoreML
 import Foundation
+import SwiftWhisperCore
 import Synchronization
 import Testing
+
 @testable import SwiftWhisperKit
-import SwiftWhisperCore
 
 // MARK: - Test doubles
 
@@ -73,28 +74,34 @@ private actor FailingSnapshotMel: MelSpectrogramProcessor {
 // MARK: - Mock CoreML runners (mirrors of what TranscriptionPipelineTests use)
 
 private final class FailingEncoderRunner: CoreMLModelRunner, @unchecked Sendable {
-    func predict(features: any MLFeatureProvider) async throws(SwiftWhisperError) -> any MLFeatureProvider {
+    func predict(features: any MLFeatureProvider) async throws(SwiftWhisperError)
+        -> any MLFeatureProvider
+    {
         throw .decoderFailure("encoder boom")
     }
 }
 
 private final class FailingDecoderRunner: StatefulCoreMLModelRunner, @unchecked Sendable {
     func resetState() async {}
-    func predict(features: any MLFeatureProvider) async throws(SwiftWhisperError) -> any MLFeatureProvider {
+    func predict(features: any MLFeatureProvider) async throws(SwiftWhisperError)
+        -> any MLFeatureProvider
+    {
         throw .decoderFailure("decoder boom")
     }
 }
 
 /// Encoder runner that returns a valid (but trivial) embedding.
 private final class TrivialEncoderRunner: CoreMLModelRunner, @unchecked Sendable {
-    func predict(features: any MLFeatureProvider) async throws(SwiftWhisperError) -> any MLFeatureProvider {
+    func predict(features: any MLFeatureProvider) async throws(SwiftWhisperError)
+        -> any MLFeatureProvider
+    {
         do {
             let array = try MLMultiArray(shape: [1, 1500, 16], dataType: .float32)
             let count = 1500 * 16
             let pointer = array.dataPointer.bindMemory(to: Float.self, capacity: count)
             for i in 0..<count { pointer[i] = 0 }
             return try MLDictionaryFeatureProvider(dictionary: [
-                WhisperEncoder.outputFeatureName: array,
+                WhisperEncoder.outputFeatureName: array
             ])
         } catch {
             throw .decoderFailure("trivial encoder: \(error.localizedDescription)")

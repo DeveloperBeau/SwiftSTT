@@ -108,7 +108,8 @@ public struct BPETokenizer: Sendable {
                 }
             }
             if bestIndex == -1 { break }
-            word.replaceSubrange(bestIndex...(bestIndex + 1), with: [word[bestIndex] + word[bestIndex + 1]])
+            word.replaceSubrange(
+                bestIndex...(bestIndex + 1), with: [word[bestIndex] + word[bestIndex + 1]])
         }
         return word
     }

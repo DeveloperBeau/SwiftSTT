@@ -1,8 +1,9 @@
 import ArgumentParser
 import Foundation
-import Testing
-@testable import SwiftWhisperCLI
 import SwiftWhisperCore
+import Testing
+
+@testable import SwiftWhisperCLI
 
 @Suite("Transcribe batch and JSON wrappers")
 struct TranscribeBatchTests {
@@ -75,7 +76,7 @@ struct TranscribeBatchTests {
     @Test("Single-file JSON uses {\"segments\": [...]} wrapper")
     func singleFileJSONWrapper() throws {
         let segments = [
-            TranscriptionSegment(text: "hi", start: 0, end: 1),
+            TranscriptionSegment(text: "hi", start: 0, end: 1)
         ]
         let payload = SegmentRendering.encodeJSON(
             perFile: [(path: "a.wav", segments: segments)],

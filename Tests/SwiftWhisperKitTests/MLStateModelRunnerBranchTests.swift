@@ -1,9 +1,10 @@
 @preconcurrency import CoreML
 import Foundation
+import SwiftWhisperCore
 import Synchronization
 import Testing
+
 @testable import SwiftWhisperKit
-import SwiftWhisperCore
 
 // MARK: - Mock branchable runner
 
@@ -91,7 +92,7 @@ struct MLStateModelRunnerBranchTests {
 
         let child = try await parent.branch()
         let provider = try MLDictionaryFeatureProvider(dictionary: [
-            "stub": MLFeatureValue(int64: 0),
+            "stub": MLFeatureValue(int64: 0)
         ])
         _ = try await child.predict(features: provider)
         _ = try await child.predict(features: provider)
@@ -116,7 +117,7 @@ struct MLStateModelRunnerBranchTests {
         let b = try await parent.branch() as? MockBranchableRunner
 
         let provider = try MLDictionaryFeatureProvider(dictionary: [
-            "stub": MLFeatureValue(int64: 0),
+            "stub": MLFeatureValue(int64: 0)
         ])
         if let a {
             _ = try await a.predict(features: provider)

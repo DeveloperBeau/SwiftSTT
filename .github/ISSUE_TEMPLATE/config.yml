@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or discussion
+    url: https://github.com/DeveloperBeau/SwiftSTT/discussions
+    about: For usage questions and design discussion, please open a Discussion
+      rather than an issue.
+  - name: Security report
+    url: https://github.com/DeveloperBeau/SwiftSTT/security/advisories/new
+    about: Report a security issue privately. Do not open a public issue.

@@ -28,7 +28,9 @@ public actor WhisperEncoder: AudioEncoding {
         self.runner = runner
     }
 
-    public func encode(spectrogram: MelSpectrogramResult) async throws(SwiftWhisperError) -> MLMultiArray {
+    public func encode(spectrogram: MelSpectrogramResult) async throws(SwiftWhisperError)
+        -> MLMultiArray
+    {
         let padded = try Self.padOrTrim(spectrogram, toFrames: Self.expectedFrames)
         let input = try Self.buildFeatureProvider(mel: padded)
         let output = try await runner.predict(features: input)
@@ -80,7 +82,7 @@ public actor WhisperEncoder: AudioEncoding {
         }
         do {
             return try MLDictionaryFeatureProvider(dictionary: [
-                inputFeatureName: array,
+                inputFeatureName: array
             ])
         } catch {
             throw .modelLoadFailed("feature provider: \(error.localizedDescription)")

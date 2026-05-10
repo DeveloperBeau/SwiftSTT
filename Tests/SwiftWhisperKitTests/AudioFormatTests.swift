@@ -1,9 +1,10 @@
 @preconcurrency import AVFoundation
 import Foundation
+import SwiftWhisperCore
 import Synchronization
 import Testing
+
 @testable import SwiftWhisperKit
-import SwiftWhisperCore
 
 @Suite("AudioFileInput format coverage")
 struct AudioFormatTests {

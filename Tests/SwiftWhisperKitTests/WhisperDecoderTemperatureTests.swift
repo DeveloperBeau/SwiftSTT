@@ -1,9 +1,10 @@
 @preconcurrency import CoreML
 import Foundation
+import SwiftWhisperCore
 import Synchronization
 import Testing
+
 @testable import SwiftWhisperKit
-import SwiftWhisperCore
 
 // MARK: - Local mock runner
 
@@ -104,7 +105,9 @@ private func makeTokenizer() -> WhisperTokenizer {
     WhisperTokenizer(specialTokens: defaultSpecials)
 }
 
-private func makeEncoderArray(shape: [Int] = [1, 1500, 16], fill: Float = 0.0) throws -> MLMultiArray {
+private func makeEncoderArray(shape: [Int] = [1, 1500, 16], fill: Float = 0.0) throws
+    -> MLMultiArray
+{
     let array = try MLMultiArray(
         shape: shape.map { NSNumber(value: $0) },
         dataType: .float32
@@ -117,7 +120,9 @@ private func makeEncoderArray(shape: [Int] = [1, 1500, 16], fill: Float = 0.0) t
     return array
 }
 
-private func twoPeakLogits(vocabSize: Int, hotA: Int, hotB: Int, valueA: Float = 1.0, valueB: Float = 1.0) -> [Float] {
+private func twoPeakLogits(
+    vocabSize: Int, hotA: Int, hotB: Int, valueA: Float = 1.0, valueB: Float = 1.0
+) -> [Float] {
     var out = [Float](repeating: -10, count: vocabSize)
     out[hotA] = valueA
     out[hotB] = valueB
@@ -154,7 +159,8 @@ struct WhisperDecoderTemperatureTests {
             logitsPerCall: queue,
             defaultLogits: oneHotLogits(vocabSize: vocabSize, hot: tokenizer.endOfTextToken)
         )
-        let decoder = WhisperDecoder(runner: runner, tokenizer: tokenizer, rng: SeededRandom(seed: 42))
+        let decoder = WhisperDecoder(
+            runner: runner, tokenizer: tokenizer, rng: SeededRandom(seed: 42))
         let encoder = try makeEncoderArray()
 
         let result = try await decoder.decode(encoderOutput: encoder, options: options)
@@ -182,7 +188,8 @@ struct WhisperDecoderTemperatureTests {
                 logitsPerCall: queue,
                 defaultLogits: oneHotLogits(vocabSize: vocabSize, hot: tokenizer.endOfTextToken)
             )
-            let decoder = WhisperDecoder(runner: runner, tokenizer: tokenizer, rng: SeededRandom(seed: 1234))
+            let decoder = WhisperDecoder(
+                runner: runner, tokenizer: tokenizer, rng: SeededRandom(seed: 1234))
             let encoder = try makeEncoderArray()
             let result = try await decoder.decode(encoderOutput: encoder, options: options)
             return result.map(\.id)
@@ -211,7 +218,8 @@ struct WhisperDecoderTemperatureTests {
 
     @Test("softmax handles all-suppressed input as uniform")
     func softmaxAllInfiniteFallback() {
-        let probs = WhisperDecoder.softmax(logits: [-Float.infinity, -Float.infinity, -Float.infinity], temperature: 1.0)
+        let probs = WhisperDecoder.softmax(
+            logits: [-Float.infinity, -Float.infinity, -Float.infinity], temperature: 1.0)
         #expect(probs.count == 3)
         for p in probs {
             #expect(abs(p - 1.0 / 3.0) < 0.0001)
@@ -270,7 +278,8 @@ struct WhisperDecoderTemperatureTests {
             _ = try await decoder.decode(encoderOutput: encoder, options: options)
             Issue.record("expected throw")
         } catch let error as SwiftWhisperError {
-            if case .invalidDecodingOption = error {} else {
+            if case .invalidDecodingOption = error {
+            } else {
                 Issue.record("wrong error: \(error)")
             }
         }

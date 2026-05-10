@@ -1,8 +1,9 @@
 @preconcurrency import CoreML
 import Foundation
-import Testing
-@testable import SwiftWhisperKit
 import SwiftWhisperCore
+import Testing
+
+@testable import SwiftWhisperKit
 
 @Suite("ModelLoader")
 struct ModelLoaderTests {
@@ -15,7 +16,8 @@ struct ModelLoaderTests {
             _ = try await loader.loadEncoder(at: fake)
             Issue.record("expected throw")
         } catch let error as SwiftWhisperError {
-            if case .modelLoadFailed = error {} else {
+            if case .modelLoadFailed = error {
+            } else {
                 Issue.record("wrong error: \(error)")
             }
         }
@@ -29,7 +31,8 @@ struct ModelLoaderTests {
             _ = try await loader.loadDecoder(at: fake)
             Issue.record("expected throw")
         } catch let error as SwiftWhisperError {
-            if case .modelLoadFailed = error {} else {
+            if case .modelLoadFailed = error {
+            } else {
                 Issue.record("wrong error: \(error)")
             }
         }
@@ -50,7 +53,8 @@ struct ModelLoaderTests {
             _ = try await loader.loadBundle(bundle)
             Issue.record("expected throw")
         } catch let error as SwiftWhisperError {
-            if case .modelLoadFailed = error {} else {
+            if case .modelLoadFailed = error {
+            } else {
                 Issue.record("wrong error: \(error)")
             }
         }

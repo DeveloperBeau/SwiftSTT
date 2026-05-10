@@ -1,9 +1,10 @@
 @preconcurrency import CoreML
 import Foundation
+import SwiftWhisperCore
 import Synchronization
 import Testing
+
 @testable import SwiftWhisperKit
-import SwiftWhisperCore
 
 // MARK: - Mock stateful runner that records inputs
 
@@ -53,13 +54,15 @@ private final class RecordingStatefulRunner: StatefulCoreMLModelRunner, @uncheck
     ) async throws(SwiftWhisperError) -> any MLFeatureProvider {
         recording.withLock { $0.predictCount += 1 }
         if let stateValue = features.featureValue(for: stateInputName),
-           let stateArray = stateValue.multiArrayValue,
-           stateArray.count > 0 {
+            let stateArray = stateValue.multiArrayValue,
+            stateArray.count > 0
+        {
             let v = stateArray[0].floatValue
             recording.withLock { $0.lastStateFirstValue = v }
         }
         if let audioValue = features.featureValue(for: audioInputName),
-           let audioArray = audioValue.multiArrayValue {
+            let audioArray = audioValue.multiArrayValue
+        {
             let count = audioArray.count
             recording.withLock { $0.lastAudioSampleCount = count }
         }
@@ -244,7 +247,8 @@ struct SileroVADTests {
 
     @Test("splitIntoWindows: smaller than window returns one padded window")
     func splitSmallerWindow() {
-        let windows = SileroVAD.splitIntoWindows(Array(repeating: Float(1), count: 100), windowSize: 512)
+        let windows = SileroVAD.splitIntoWindows(
+            Array(repeating: Float(1), count: 100), windowSize: 512)
         #expect(windows.count == 1)
         #expect(windows[0].count == 512)
         // First 100 should be ones, the rest zeros.
@@ -255,7 +259,8 @@ struct SileroVADTests {
 
     @Test("splitIntoWindows: exact multiple produces non-overlapping windows")
     func splitExactMultiple() {
-        let windows = SileroVAD.splitIntoWindows(Array(repeating: Float(0), count: 1024), windowSize: 512)
+        let windows = SileroVAD.splitIntoWindows(
+            Array(repeating: Float(0), count: 1024), windowSize: 512)
         #expect(windows.count == 2)
         #expect(windows[0].count == 512)
         #expect(windows[1].count == 512)
@@ -263,7 +268,8 @@ struct SileroVADTests {
 
     @Test("splitIntoWindows: tail is padded")
     func splitTailPadded() {
-        let windows = SileroVAD.splitIntoWindows(Array(repeating: Float(1), count: 700), windowSize: 512)
+        let windows = SileroVAD.splitIntoWindows(
+            Array(repeating: Float(1), count: 700), windowSize: 512)
         #expect(windows.count == 2)
         #expect(windows[1][0] == 1)
         #expect(windows[1][187] == 1)

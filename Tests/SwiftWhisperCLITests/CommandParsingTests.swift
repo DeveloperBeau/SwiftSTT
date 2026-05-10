@@ -1,8 +1,9 @@
 import ArgumentParser
 import Foundation
-import Testing
-@testable import SwiftWhisperCLI
 import SwiftWhisperCore
+import Testing
+
+@testable import SwiftWhisperCLI
 
 @Suite("CLI command parsing")
 struct CommandParsingTests {

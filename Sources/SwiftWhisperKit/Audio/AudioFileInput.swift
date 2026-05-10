@@ -1,7 +1,7 @@
 @preconcurrency import AVFoundation
 import Foundation
-import Synchronization
 import SwiftWhisperCore
+import Synchronization
 
 /// File-backed ``AudioInputProvider`` for offline transcription.
 ///
@@ -138,7 +138,8 @@ public actor AudioFileInput: AudioInputProvider {
 
             var conversionError: NSError?
             let consumed = Atomic<Bool>(false)
-            let status = converter.convert(to: outputBuffer, error: &conversionError) { _, outStatus in
+            let status = converter.convert(to: outputBuffer, error: &conversionError) {
+                _, outStatus in
                 if consumed.load(ordering: .relaxed) {
                     outStatus.pointee = .noDataNow
                     return nil
@@ -152,8 +153,7 @@ public actor AudioFileInput: AudioInputProvider {
                 return
             }
 
-            if
-                outputBuffer.frameLength > 0,
+            if outputBuffer.frameLength > 0,
                 let channelData = outputBuffer.floatChannelData?[0]
             {
                 let count = Int(outputBuffer.frameLength)

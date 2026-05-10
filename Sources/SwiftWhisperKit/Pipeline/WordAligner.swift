@@ -51,7 +51,8 @@ public actor WordAligner {
 
         // DTW is defined on a cost matrix. Convert attention (similarity) to
         // cost by negation; large attention => low cost.
-        var costMatrix = [[Float]](repeating: [Float](repeating: 0, count: audioFrames), count: textFrames)
+        var costMatrix = [[Float]](
+            repeating: [Float](repeating: 0, count: audioFrames), count: textFrames)
         for i in 0..<textFrames {
             for j in 0..<audioFrames {
                 costMatrix[i][j] = -matrix[i][j]
@@ -86,13 +87,15 @@ public actor WordAligner {
             let textFracStart = Double(i) / Double(words.count)
             let textFracEnd = Double(i + 1) / Double(words.count)
             let textFrameStart = min(textFrames - 1, Int(textFracStart * Double(textFrames)))
-            let textFrameEnd = min(textFrames - 1, max(textFrameStart, Int(textFracEnd * Double(textFrames)) - 1))
+            let textFrameEnd = min(
+                textFrames - 1, max(textFrameStart, Int(textFracEnd * Double(textFrames)) - 1))
 
             let audioStart = textToAudio[textFrameStart]
             let audioEnd = textToAudio[textFrameEnd]
 
             let start = segment.start + Double(audioStart) * secondsPerAudioFrame
-            let end: TimeInterval = i == words.count - 1
+            let end: TimeInterval =
+                i == words.count - 1
                 ? segment.end
                 : segment.start + Double(audioEnd + 1) * secondsPerAudioFrame
             timings.append(WordTiming(word: word, start: start, end: max(start, end)))

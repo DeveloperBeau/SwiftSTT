@@ -1,7 +1,7 @@
 @preconcurrency import CoreML
 import Foundation
-import Synchronization
 import SwiftWhisperCore
+import Synchronization
 
 /// Wires audio capture through VAD, mel spectrogram, encoder, decoder, and
 /// segment emission into a single streaming transcription actor.
@@ -195,7 +195,8 @@ public actor TranscriptionPipeline {
             let pendingFrames = await melSpectrogram.currentFrameCount()
             let now = Date().timeIntervalSince1970
             let elapsed = now - lastDecodeTime
-            let shouldDecode = (elapsed >= decodeIntervalSeconds && pendingFrames > 0)
+            let shouldDecode =
+                (elapsed >= decodeIntervalSeconds && pendingFrames > 0)
                 || pendingFrames >= maxBufferedFrames
 
             if shouldDecode {
@@ -239,7 +240,8 @@ public actor TranscriptionPipeline {
 
         let tokens: [WhisperToken]
         do {
-            tokens = try await decoder.decode(encoderOutput: encoderOutput, options: effectiveOptions)
+            tokens = try await decoder.decode(
+                encoderOutput: encoderOutput, options: effectiveOptions)
         } catch {
             segmentContinuation?.finish()
             return

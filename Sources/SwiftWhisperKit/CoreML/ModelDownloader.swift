@@ -33,15 +33,18 @@ public actor ModelDownloader {
     private let listingSession: URLSession
     private let delegate: ModelDownloadDelegate?
     private var inFlightDownloads: [WhisperModel: Task<Void, Never>] = [:]
-    private var inFlightStreams: [WhisperModel: AsyncThrowingStream<DownloadProgress, any Error>] = [:]
+    private var inFlightStreams: [WhisperModel: AsyncThrowingStream<DownloadProgress, any Error>] =
+        [:]
 
     /// Default Application Support location used when no cache directory is supplied.
     public static var defaultCacheDirectory: URL {
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first ?? FileManager.default.temporaryDirectory
-        return appSupport
+        let appSupport =
+            FileManager.default.urls(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask
+            ).first ?? FileManager.default.temporaryDirectory
+        return
+            appSupport
             .appendingPathComponent("SwiftWhisper", isDirectory: true)
             .appendingPathComponent("Models", isDirectory: true)
     }
@@ -134,7 +137,10 @@ public actor ModelDownloader {
         let decoderURL = dir.appendingPathComponent("TextDecoder.mlmodelc", isDirectory: true)
         let tokenizerURL = dir.appendingPathComponent("tokenizer.json")
 
-        for (name, url) in [("AudioEncoder.mlmodelc", encoderURL), ("TextDecoder.mlmodelc", decoderURL), ("tokenizer.json", tokenizerURL)] {
+        for (name, url) in [
+            ("AudioEncoder.mlmodelc", encoderURL), ("TextDecoder.mlmodelc", decoderURL),
+            ("tokenizer.json", tokenizerURL),
+        ] {
             guard FileManager.default.fileExists(atPath: url.path) else {
                 throw .modelFileMissing(name)
             }
@@ -169,11 +175,12 @@ public actor ModelDownloader {
 
         if isDownloaded(model) {
             return AsyncThrowingStream { continuation in
-                continuation.yield(DownloadProgress(
-                    totalFiles: 0, completedFiles: 0,
-                    totalBytes: 0, totalBytesDownloaded: 0,
-                    phase: .complete
-                ))
+                continuation.yield(
+                    DownloadProgress(
+                        totalFiles: 0, completedFiles: 0,
+                        totalBytes: 0, totalBytesDownloaded: 0,
+                        phase: .complete
+                    ))
                 continuation.finish()
             }
         }
@@ -186,7 +193,8 @@ public actor ModelDownloader {
             } catch let error as SwiftWhisperError {
                 continuation.finish(throwing: error)
             } catch {
-                continuation.finish(throwing: SwiftWhisperError.modelDownloadFailed(error.localizedDescription))
+                continuation.finish(
+                    throwing: SwiftWhisperError.modelDownloadFailed(error.localizedDescription))
             }
             await self?.clearInFlight(model)
         }
@@ -222,11 +230,12 @@ public actor ModelDownloader {
         let dir = cacheDirectory(for: model)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
-        continuation.yield(DownloadProgress(
-            totalFiles: 0, completedFiles: 0,
-            totalBytes: 0, totalBytesDownloaded: 0,
-            phase: .listing
-        ))
+        continuation.yield(
+            DownloadProgress(
+                totalFiles: 0, completedFiles: 0,
+                totalBytes: 0, totalBytesDownloaded: 0,
+                phase: .listing
+            ))
 
         let files = try await listFiles(model: model)
         let totalBytes = files.reduce(Int64(0)) { $0 + $1.size }
@@ -234,29 +243,32 @@ public actor ModelDownloader {
 
         for (index, file) in files.enumerated() {
             try Task.checkCancellation()
-            continuation.yield(DownloadProgress(
-                totalFiles: files.count, completedFiles: index,
-                totalBytes: totalBytes, totalBytesDownloaded: bytesDownloaded,
-                currentFile: file.name,
-                phase: .downloading
-            ))
+            continuation.yield(
+                DownloadProgress(
+                    totalFiles: files.count, completedFiles: index,
+                    totalBytes: totalBytes, totalBytesDownloaded: bytesDownloaded,
+                    currentFile: file.name,
+                    phase: .downloading
+                ))
 
             try await downloadFile(file, to: dir)
             bytesDownloaded += file.size
         }
 
-        continuation.yield(DownloadProgress(
-            totalFiles: files.count, completedFiles: files.count,
-            totalBytes: totalBytes, totalBytesDownloaded: bytesDownloaded,
-            phase: .verifying
-        ))
+        continuation.yield(
+            DownloadProgress(
+                totalFiles: files.count, completedFiles: files.count,
+                totalBytes: totalBytes, totalBytesDownloaded: bytesDownloaded,
+                phase: .verifying
+            ))
         FileManager.default.createFile(atPath: markerPath(for: model).path, contents: nil)
 
-        continuation.yield(DownloadProgress(
-            totalFiles: files.count, completedFiles: files.count,
-            totalBytes: totalBytes, totalBytesDownloaded: bytesDownloaded,
-            phase: .complete
-        ))
+        continuation.yield(
+            DownloadProgress(
+                totalFiles: files.count, completedFiles: files.count,
+                totalBytes: totalBytes, totalBytesDownloaded: bytesDownloaded,
+                phase: .complete
+            ))
         continuation.finish()
     }
 
@@ -272,8 +284,10 @@ public actor ModelDownloader {
     private func listFiles(model: WhisperModel) async throws -> [HFFile] {
         let repo = WhisperModel.huggingFaceRepo
         let path = model.huggingFacePath
-        guard let url = URL(string: "https://huggingface.co/api/models/\(repo)/tree/main/\(path)") else {
-            throw SwiftWhisperError.modelDownloadFailed("invalid HuggingFace URL for \(model.rawValue)")
+        guard let url = URL(string: "https://huggingface.co/api/models/\(repo)/tree/main/\(path)")
+        else {
+            throw SwiftWhisperError.modelDownloadFailed(
+                "invalid HuggingFace URL for \(model.rawValue)")
         }
 
         let (data, response) = try await listingSession.data(from: url)
@@ -301,9 +315,11 @@ public actor ModelDownloader {
 
     private func downloadFile(_ file: HFFile, to directory: URL) async throws {
         let repo = WhisperModel.huggingFaceRepo
-        guard let downloadURL = URL(
-            string: "https://huggingface.co/\(repo)/resolve/main/\(file.relativePath)"
-        ) else {
+        guard
+            let downloadURL = URL(
+                string: "https://huggingface.co/\(repo)/resolve/main/\(file.relativePath)"
+            )
+        else {
             throw SwiftWhisperError.modelDownloadFailed("invalid download URL for \(file.name)")
         }
 
@@ -317,7 +333,9 @@ public actor ModelDownloader {
         }
     }
 
-    private func downloadFileForeground(_ file: HFFile, from downloadURL: URL, to destURL: URL) async throws {
+    private func downloadFileForeground(_ file: HFFile, from downloadURL: URL, to destURL: URL)
+        async throws
+    {
         let (tempURL, response) = try await urlSession.download(from: downloadURL)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw SwiftWhisperError.modelDownloadFailed(
@@ -338,9 +356,12 @@ public actor ModelDownloader {
         try moveDownloaded(from: tempURL, to: destURL)
     }
 
-    private func downloadFileBackground(_ file: HFFile, from downloadURL: URL, to destURL: URL) async throws {
+    private func downloadFileBackground(_ file: HFFile, from downloadURL: URL, to destURL: URL)
+        async throws
+    {
         guard let delegate else {
-            throw SwiftWhisperError.modelDownloadFailed("background mode without delegate (illegal state)")
+            throw SwiftWhisperError.modelDownloadFailed(
+                "background mode without delegate (illegal state)")
         }
 
         let existing = await findExistingTask(for: downloadURL)
@@ -349,10 +370,12 @@ public actor ModelDownloader {
         // Per-file progress stream is held only to satisfy the delegate's
         // TaskHandle contract; the outer download loop emits its own
         // file-granularity progress so this continuation is intentionally drained.
-        let (sinkStream, sinkContinuation) = AsyncThrowingStream<DownloadProgress, any Error>.makeStream()
+        let (sinkStream, sinkContinuation) = AsyncThrowingStream<DownloadProgress, any Error>
+            .makeStream()
         let drain = Task { for try await _ in sinkStream {} }
 
-        let finishedURL: URL = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<URL, any Error>) in
+        let finishedURL: URL = try await withCheckedThrowingContinuation {
+            (cont: CheckedContinuation<URL, any Error>) in
             let handle = ModelDownloadDelegate.TaskHandle(
                 continuation: sinkContinuation,
                 destination: destURL,
@@ -387,7 +410,9 @@ public actor ModelDownloader {
             .split(separator: "/")
             .dropFirst()
         if destPath.count > 1 {
-            let subdir = destPath.dropLast().reduce(directory) { $0.appendingPathComponent(String($1), isDirectory: true) }
+            let subdir = destPath.dropLast().reduce(directory) {
+                $0.appendingPathComponent(String($1), isDirectory: true)
+            }
             return subdir.appendingPathComponent(String(destPath.last!))
         }
         return directory.appendingPathComponent(file.name)
@@ -419,7 +444,7 @@ public actor ModelDownloader {
 
 // MARK: - Background re-entry
 
-public extension ModelDownloader {
+extension ModelDownloader {
 
     /// Stashes the system completion handler delivered by
     /// `application(_:handleEventsForBackgroundURLSession:completionHandler:)`.
@@ -428,7 +453,7 @@ public extension ModelDownloader {
     /// `urlSessionDidFinishEvents(forBackgroundURLSession:)` for the matching
     /// identifier. Calling with an unknown identifier is a no-op so apps can
     /// safely route every relaunch event without checking session names first.
-    static func handleBackgroundEvents(
+    public static func handleBackgroundEvents(
         identifier: String,
         completion: @escaping @Sendable () -> Void
     ) async {
@@ -443,7 +468,7 @@ public extension ModelDownloader {
     ///
     /// Useful on app relaunch to surface progress for downloads that started
     /// before suspension. Returns an empty dictionary in foreground mode.
-    func currentBackgroundDownloads() async -> [WhisperModel: Float] {
+    public func currentBackgroundDownloads() async -> [WhisperModel: Float] {
         guard case .background = mode else { return [:] }
         let tasks = await allTasks()
         var result: [WhisperModel: Float] = [:]

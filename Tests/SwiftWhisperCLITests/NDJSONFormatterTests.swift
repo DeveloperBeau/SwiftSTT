@@ -1,7 +1,8 @@
 import Foundation
-import Testing
-@testable import SwiftWhisperCLI
 import SwiftWhisperCore
+import Testing
+
+@testable import SwiftWhisperCLI
 
 @Suite("NDJSONFormatter")
 struct NDJSONFormatterTests {

@@ -3,9 +3,9 @@ import PackageDescription
 
 let upcoming: [SwiftSetting] = [
     .enableUpcomingFeature("NonisolatedNonsendingByDefault"),  // SE-0461
-    .enableUpcomingFeature("InferIsolatedConformances"),       // SE-0466
-    .enableUpcomingFeature("ExistentialAny"),                  // SE-0335
-    .enableUpcomingFeature("MemberImportVisibility"),          // SE-0444
+    .enableUpcomingFeature("InferIsolatedConformances"),  // SE-0466
+    .enableUpcomingFeature("ExistentialAny"),  // SE-0335
+    .enableUpcomingFeature("MemberImportVisibility"),  // SE-0444
 ]
 
 let package = Package(
@@ -40,7 +40,7 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             swiftSettings: upcoming + [
-                .defaultIsolation(MainActor.self),
+                .defaultIsolation(MainActor.self)
             ]
         ),
         .testTarget(
@@ -60,7 +60,7 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             swiftSettings: upcoming + [
-                .defaultIsolation(MainActor.self),
+                .defaultIsolation(MainActor.self)
             ]
         ),
         .testTarget(

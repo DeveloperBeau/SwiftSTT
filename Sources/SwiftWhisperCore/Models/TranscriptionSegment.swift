@@ -25,7 +25,7 @@ public struct TranscriptionSegment: Sendable, Equatable {
 }
 
 /// Convenience helpers for breaking a segment down into per-word slices.
-public extension TranscriptionSegment {
+extension TranscriptionSegment {
 
     /// Heuristic word-level timings derived by splitting ``text`` on whitespace
     /// and distributing the segment's duration across the resulting words in
@@ -40,7 +40,7 @@ public extension TranscriptionSegment {
     /// Returns an empty array when ``text`` is empty or whitespace-only.
     /// The last word's `end` is pinned to the segment's `end` so the cumulative
     /// sum lines up exactly without float drift.
-    func proportionalWordTimings() -> [WordTiming] {
+    public func proportionalWordTimings() -> [WordTiming] {
         let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
         guard !words.isEmpty else { return [] }
 

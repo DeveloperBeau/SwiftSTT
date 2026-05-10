@@ -1,9 +1,10 @@
 @preconcurrency import CoreML
 import Foundation
+import SwiftWhisperCore
 import Synchronization
 import Testing
+
 @testable import SwiftWhisperKit
-import SwiftWhisperCore
 
 // MARK: - Mock runner
 
@@ -44,7 +45,7 @@ private final class MockRunner: CoreMLModelRunner, @unchecked Sendable {
         case .returnArray(let array):
             do {
                 return try MLDictionaryFeatureProvider(dictionary: [
-                    WhisperEncoder.outputFeatureName: array,
+                    WhisperEncoder.outputFeatureName: array
                 ])
             } catch {
                 throw .decoderFailure("mock provider: \(error.localizedDescription)")
@@ -183,7 +184,7 @@ struct WhisperEncoderTests {
     func extractEmbeddingsHappy() throws {
         let array = try makeOutputArray(shape: [1, 1500, 384])
         let provider = try MLDictionaryFeatureProvider(dictionary: [
-            WhisperEncoder.outputFeatureName: array,
+            WhisperEncoder.outputFeatureName: array
         ])
         let result = try WhisperEncoder.extractEmbeddings(from: provider)
         #expect(result.shape == [1, 1500, 384])
@@ -192,13 +193,14 @@ struct WhisperEncoderTests {
     @Test("extractEmbeddings throws decoderFailure when feature missing")
     func extractEmbeddingsMissing() throws {
         let provider = try MLDictionaryFeatureProvider(dictionary: [
-            "wrong_name": try makeOutputArray(shape: [1, 1, 1]),
+            "wrong_name": try makeOutputArray(shape: [1, 1, 1])
         ])
         do {
             _ = try WhisperEncoder.extractEmbeddings(from: provider)
             Issue.record("expected throw")
         } catch let error as SwiftWhisperError {
-            if case .decoderFailure = error {} else {
+            if case .decoderFailure = error {
+            } else {
                 Issue.record("wrong error: \(error)")
             }
         }
@@ -207,13 +209,14 @@ struct WhisperEncoderTests {
     @Test("extractEmbeddings throws decoderFailure when feature is not multi-array")
     func extractEmbeddingsWrongType() throws {
         let provider = try MLDictionaryFeatureProvider(dictionary: [
-            WhisperEncoder.outputFeatureName: MLFeatureValue(string: "not an array"),
+            WhisperEncoder.outputFeatureName: MLFeatureValue(string: "not an array")
         ])
         do {
             _ = try WhisperEncoder.extractEmbeddings(from: provider)
             Issue.record("expected throw")
         } catch let error as SwiftWhisperError {
-            if case .decoderFailure = error {} else {
+            if case .decoderFailure = error {
+            } else {
                 Issue.record("wrong error: \(error)")
             }
         }
@@ -247,7 +250,9 @@ struct WhisperEncoderTests {
         }
         // And confirm padding region is zero.
         for m in 0..<80 {
-            #expect(receivedPtr[m * WhisperEncoder.expectedFrames + (WhisperEncoder.expectedFrames - 1)] == 0)
+            #expect(
+                receivedPtr[m * WhisperEncoder.expectedFrames + (WhisperEncoder.expectedFrames - 1)]
+                    == 0)
         }
 
         // Returned array should be the canned output.

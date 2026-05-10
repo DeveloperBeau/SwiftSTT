@@ -34,19 +34,25 @@ struct TranscribeCommand: AsyncParsableCommand {
         abstract: "Transcribe one or more local audio files using a downloaded model."
     )
 
-    @Argument(help: "Paths to audio files to transcribe (WAV, AIFF, CAF; M4A when codec available).")
+    @Argument(
+        help: "Paths to audio files to transcribe (WAV, AIFF, CAF; M4A when codec available).")
     var audioFiles: [String]
 
     @Option(name: .shortAndLong, help: "Model to use (default: base).")
     var model: WhisperModel = .base
 
-    @Option(name: .shortAndLong, help: "ISO-639-1 language code, e.g. 'en'. Auto-detect when omitted.")
+    @Option(
+        name: .shortAndLong, help: "ISO-639-1 language code, e.g. 'en'. Auto-detect when omitted.")
     var language: String?
 
-    @Option(name: .shortAndLong, help: "Output format: text, srt, vtt, json, ndjson, ttml, sbv (default: text).")
+    @Option(
+        name: .shortAndLong,
+        help: "Output format: text, srt, vtt, json, ndjson, ttml, sbv (default: text).")
     var format: OutputFormat = .text
 
-    @Option(name: [.short, .long], help: "Write transcript to <path> instead of stdout. Tilde paths are expanded.")
+    @Option(
+        name: [.short, .long],
+        help: "Write transcript to <path> instead of stdout. Tilde paths are expanded.")
     var output: String?
 
     @Flag(name: .long, help: "Refuse to overwrite an existing --output file.")
@@ -55,7 +61,11 @@ struct TranscribeCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Process N files in parallel (default 1).")
     var concurrency: Int = 1
 
-    @Option(name: .long, help: "Override the model cache directory. Honors SWIFTWHISPER_CACHE_DIR; default ~/Library/Application Support/SwiftWhisper/Models.")
+    @Option(
+        name: .long,
+        help:
+            "Override the model cache directory. Honors SWIFTWHISPER_CACHE_DIR; default ~/Library/Application Support/SwiftWhisper/Models."
+    )
     var cacheDir: String?
 
     func validate() throws {
@@ -75,7 +85,9 @@ struct TranscribeCommand: AsyncParsableCommand {
 
     func run() async throws {
         if concurrency > 8 {
-            writeStderr("warning: --concurrency \(concurrency) is high; expect heavy memory and CPU pressure.\n")
+            writeStderr(
+                "warning: --concurrency \(concurrency) is high; expect heavy memory and CPU pressure.\n"
+            )
         }
 
         let downloader = ModelDownloader(cacheDirectory: CacheDirectoryOption.resolve(cacheDir))
@@ -257,7 +269,9 @@ struct TranscribeCommand: AsyncParsableCommand {
             destination.writeLine(header)
         }
         for (fileIndex, entry) in perFile.enumerated() {
-            if isBatch, let separator = formatter.fileSeparator(path: entry.path, fileIndex: fileIndex) {
+            if isBatch,
+                let separator = formatter.fileSeparator(path: entry.path, fileIndex: fileIndex)
+            {
                 destination.writeLine(separator)
             }
             for (index, segment) in entry.segments.enumerated() {
@@ -362,7 +376,8 @@ enum SegmentRendering {
             return JSONFormatter.encode(payload)
         } else {
             let segments = perFile.first?.segments ?? []
-            let payload = SingleFilePayload(segments: segments.map(JSONSegmentPayload.init(segment:)))
+            let payload = SingleFilePayload(
+                segments: segments.map(JSONSegmentPayload.init(segment:)))
             return JSONFormatter.encode(payload)
         }
     }

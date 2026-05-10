@@ -181,13 +181,15 @@ public actor SileroVAD: VoiceActivityDetector {
         }
 
         if let nextStateValue = output.featureValue(for: featureNames.stateOutput),
-           let nextState = nextStateValue.multiArrayValue {
+            let nextState = nextStateValue.multiArrayValue
+        {
             state = nextState
         }
 
         guard let probValue = output.featureValue(for: featureNames.probabilityOutput),
-              let probArray = probValue.multiArrayValue,
-              probArray.count > 0 else {
+            let probArray = probValue.multiArrayValue,
+            probArray.count > 0
+        else {
             return 0
         }
         return probArray[0].floatValue

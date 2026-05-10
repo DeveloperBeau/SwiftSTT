@@ -257,7 +257,8 @@ public actor WhisperDecoder: TokenDecoding {
                     probs = Self.topPFilter(probs: probs, threshold: options.topP)
                 }
                 next = Self.sample(probs: probs, rng: &rng)
-                stepLogProb = next < probs.count && probs[next] > 0
+                stepLogProb =
+                    next < probs.count && probs[next] > 0
                     ? logFloat(probs[next])
                     : -.infinity
             } else {
@@ -339,7 +340,8 @@ public actor WhisperDecoder: TokenDecoding {
                 let logProbs = Self.logSoftmax(logits: logits)
                 let topK = Self.selectTopK(logits: logProbs, k: options.beamSize)
                 for entry in topK {
-                    candidates.append((beamIndex, entry.token, beam.logProbSum + entry.score, entry.score))
+                    candidates.append(
+                        (beamIndex, entry.token, beam.logProbSum + entry.score, entry.score))
                 }
             }
 
@@ -361,16 +363,20 @@ public actor WhisperDecoder: TokenDecoding {
                 }
                 let text = tokenizer.decode(tokens: [candidate.tokenId])
                 var grown = parent
-                grown.tokens.append(WhisperToken(id: candidate.tokenId, text: text, probability: expFloat(candidate.logProb)))
+                grown.tokens.append(
+                    WhisperToken(
+                        id: candidate.tokenId, text: text, probability: expFloat(candidate.logProb))
+                )
                 grown.logProbSum = candidate.score
                 nextBeams.append(grown)
             }
             beams = nextBeams
         }
 
-        let best = beams.max { lhs, rhs in
-            lhs.logProbSum < rhs.logProbSum
-        } ?? beams[0]
+        let best =
+            beams.max { lhs, rhs in
+                lhs.logProbSum < rhs.logProbSum
+            } ?? beams[0]
         return best.tokens
     }
 
@@ -477,7 +483,8 @@ public actor WhisperDecoder: TokenDecoding {
                 let logProbs = Self.logSoftmax(logits: logits)
                 let topK = Self.selectTopK(logits: logProbs, k: options.beamSize)
                 for entry in topK {
-                    candidates.append((beamIndex, entry.token, beam.logProbSum + entry.score, entry.score))
+                    candidates.append(
+                        (beamIndex, entry.token, beam.logProbSum + entry.score, entry.score))
                 }
             }
 
@@ -518,15 +525,19 @@ public actor WhisperDecoder: TokenDecoding {
                     runner: runner,
                     consumedPrefix: parent.consumedPrefix
                 )
-                grown.tokens.append(WhisperToken(id: candidate.tokenId, text: text, probability: expFloat(candidate.logProb)))
+                grown.tokens.append(
+                    WhisperToken(
+                        id: candidate.tokenId, text: text, probability: expFloat(candidate.logProb))
+                )
                 nextBeams.append(grown)
             }
             beams = nextBeams
         }
 
-        let best = beams.max { lhs, rhs in
-            lhs.logProbSum < rhs.logProbSum
-        } ?? beams[0]
+        let best =
+            beams.max { lhs, rhs in
+                lhs.logProbSum < rhs.logProbSum
+            } ?? beams[0]
         return best.tokens
     }
 
@@ -641,13 +652,15 @@ public actor WhisperDecoder: TokenDecoding {
             throw .invalidDecodingOption("beamSize must be >= 1; got \(options.beamSize)")
         }
         if options.beamSize > 1 && options.temperature > 0 {
-            throw .invalidDecodingOption("beam search and temperature sampling are mutually exclusive")
+            throw .invalidDecodingOption(
+                "beam search and temperature sampling are mutually exclusive")
         }
         if options.topP <= 0 || options.topP > 1.0 {
             throw .invalidDecodingOption("topP must be in (0, 1]; got \(options.topP)")
         }
         if options.repetitionPenalty <= 0 {
-            throw .invalidDecodingOption("repetitionPenalty must be > 0; got \(options.repetitionPenalty)")
+            throw .invalidDecodingOption(
+                "repetitionPenalty must be > 0; got \(options.repetitionPenalty)")
         }
         if options.beamSize == 1 && options.temperatureFallback.isEmpty {
             throw .invalidDecodingOption("temperatureFallback must contain at least one entry")

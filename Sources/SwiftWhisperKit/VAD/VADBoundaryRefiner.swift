@@ -102,8 +102,9 @@ public actor VADBoundaryRefiner {
                 }
                 consecutiveSilence += 1
                 if consecutiveSilence >= endConsecutive,
-                   let segStart = currentSegmentStart,
-                   let segEnd = pendingEndTime {
+                    let segStart = currentSegmentStart,
+                    let segEnd = pendingEndTime
+                {
                     emitted = SpeechBoundary(startTime: segStart, endTime: segEnd)
                     inSpeech = false
                     consecutiveSpeech = 0
@@ -120,7 +121,8 @@ public actor VADBoundaryRefiner {
                 }
                 consecutiveSpeech += 1
                 if consecutiveSpeech >= startConsecutive,
-                   let candidateStart = pendingStartTime {
+                    let candidateStart = pendingStartTime
+                {
                     inSpeech = true
                     currentSegmentStart = candidateStart
                     consecutiveSpeech = 0

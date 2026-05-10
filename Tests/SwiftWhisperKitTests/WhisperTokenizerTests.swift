@@ -1,7 +1,8 @@
 import Foundation
-import Testing
-@testable import SwiftWhisperKit
 import SwiftWhisperCore
+import Testing
+
+@testable import SwiftWhisperKit
 
 @Suite("WhisperTokenizer")
 struct WhisperTokenizerTests {
@@ -148,16 +149,16 @@ struct WhisperTokenizerTests {
     @Test("Loading tokenizer from JSON file")
     func loadFromJSON() throws {
         let json = """
-        {
-          "added_tokens": [
-            {"id": 50257, "content": "<|endoftext|>"}
-          ],
-          "model": {
-            "vocab": {"h": 0, "i": 1},
-            "merges": ["h i"]
-          }
-        }
-        """
+            {
+              "added_tokens": [
+                {"id": 50257, "content": "<|endoftext|>"}
+              ],
+              "model": {
+                "vocab": {"h": 0, "i": 1},
+                "merges": ["h i"]
+              }
+            }
+            """
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID()).json")
         try Data(json.utf8).write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
@@ -173,7 +174,8 @@ struct WhisperTokenizerTests {
             _ = try WhisperTokenizer(contentsOf: url)
             Issue.record("expected throw")
         } catch let error as SwiftWhisperError {
-            if case .modelLoadFailed = error {} else {
+            if case .modelLoadFailed = error {
+            } else {
                 Issue.record("wrong error: \(error)")
             }
         }
@@ -182,14 +184,14 @@ struct WhisperTokenizerTests {
     @Test("Tokenizer.json supports array-of-pairs merges format")
     func mergesArrayFormat() throws {
         let json = """
-        {
-          "added_tokens": [],
-          "model": {
-            "vocab": {"a": 0, "b": 1},
-            "merges": [["a", "b"]]
-          }
-        }
-        """
+            {
+              "added_tokens": [],
+              "model": {
+                "vocab": {"a": 0, "b": 1},
+                "merges": [["a", "b"]]
+              }
+            }
+            """
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID()).json")
         try Data(json.utf8).write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }

@@ -1,7 +1,8 @@
 import Foundation
-import Testing
-@testable import SwiftWhisperKit
 import SwiftWhisperCore
+import Testing
+
+@testable import SwiftWhisperKit
 
 @Suite("WhisperDecoder top-p sampling")
 struct WhisperDecoderTopPTests {
@@ -86,7 +87,8 @@ struct WhisperDecoderTopPTests {
             try WhisperDecoder.validate(options: options)
             Issue.record("expected throw")
         } catch let error as SwiftWhisperError {
-            if case .invalidDecodingOption = error {} else {
+            if case .invalidDecodingOption = error {
+            } else {
                 Issue.record("wrong error: \(error)")
             }
         }
@@ -100,7 +102,8 @@ struct WhisperDecoderTopPTests {
             try WhisperDecoder.validate(options: options)
             Issue.record("expected throw")
         } catch let error as SwiftWhisperError {
-            if case .invalidDecodingOption = error {} else {
+            if case .invalidDecodingOption = error {
+            } else {
                 Issue.record("wrong error: \(error)")
             }
         }
