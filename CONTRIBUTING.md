@@ -88,8 +88,23 @@ manual dispatch.
 - Prefer `actor` over `@unchecked Sendable`.
 - Public API uses Swift naming conventions: omit needless words, fluent reads.
 
-A `.swift-format` config lives at the repo root. CI runs `swift format lint` on
-every push.
+A `.swift-format` config lives at the repo root. CI runs
+`swift format lint --strict` on every push.
+
+Run `scripts/install-hooks.sh` once after cloning to enable a pre-commit hook
+that lints staged Swift files locally before each commit.
+
+### Linter choice
+
+This project uses **`swift-format` only** (the official Apple linter, bundled
+with the Swift toolchain). SwiftLint is **not** used.
+
+The two tools have overlapping but non-identical rule sets, and running both
+produces conflicting fixups (for example, brace placement and trailing-comma
+style differ between defaults). Pick one. If you have SwiftLint installed
+globally, configure your editor to disable it for this repo, or add a
+`.swiftlint.yml` with `disabled_rules: [...]` shadowing every rule. Pull
+requests that introduce a SwiftLint config will be closed.
 
 ## Releasing
 

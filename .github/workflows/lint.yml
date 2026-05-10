@@ -11,6 +11,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  swift-format:
+    name: swift-format lint
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          if [ -d "/Applications/Xcode_16.4.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_16.4.app
+          elif [ -d "/Applications/Xcode_16.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_16.app
+          fi
+          swift format --version
+
+      - name: Lint Sources, Tests, Package.swift
+        run: swift format lint --strict -r Sources Tests Package.swift
+
   prose:
     name: Prose checks
     runs-on: ubuntu-latest
