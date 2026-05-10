@@ -16,30 +16,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, macos-14]
+        os: [macos-15]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Select Xcode
-        run: |
-          if [ -d "/Applications/Xcode_16.4.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.4.app
-          elif [ -d "/Applications/Xcode_16.3.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.3.app
-          elif [ -d "/Applications/Xcode_16.2.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.2.app
-          elif [ -d "/Applications/Xcode_16.1.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.1.app
-          elif [ -d "/Applications/Xcode_16.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.app
-          else
-            echo "No suitable Xcode 16.x found"
-            ls /Applications/ | grep -i xcode
-            exit 1
-          fi
-          xcodebuild -version
+      - name: Resolve Swift 6.3
+        uses: DeveloperBeau/resolve-swift@v2
+        with:
+          swift-version: '6.3'
 
       - name: Swift version
         run: swift --version
@@ -55,7 +41,7 @@ jobs:
 
       - name: Upload coverage artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-${{ matrix.os }}
           path: |
