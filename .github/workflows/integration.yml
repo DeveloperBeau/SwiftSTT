@@ -30,14 +30,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode
-        run: |
-          if [ -d "/Applications/Xcode_16.4.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.4.app
-          elif [ -d "/Applications/Xcode_16.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.app
-          fi
-          xcodebuild -version
+      - name: Resolve Swift 6.3
+        uses: DeveloperBeau/resolve-swift@v2
+        with:
+          swift-version: '6.3'
 
       - name: Swift version
         run: swift --version

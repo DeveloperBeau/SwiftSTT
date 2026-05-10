@@ -18,14 +18,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode
-        run: |
-          if [ -d "/Applications/Xcode_16.4.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.4.app
-          elif [ -d "/Applications/Xcode_16.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.app
-          fi
-          swift format --version
+      - name: Resolve Swift 6.3
+        uses: DeveloperBeau/resolve-swift@v2
+        with:
+          swift-version: '6.3'
+
+      - name: swift-format version
+        run: swift format --version
 
       - name: Lint Sources, Tests, Package.swift
         run: swift format lint --strict -r Sources Tests Package.swift
