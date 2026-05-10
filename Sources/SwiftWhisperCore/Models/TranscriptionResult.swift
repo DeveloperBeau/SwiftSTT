@@ -18,8 +18,9 @@ public struct TranscriptionResult: Sendable, Equatable {
     /// Confirmed text that is not expected to change.
     public let text: String
 
-    /// Tentative text that may be revised in the next update. Empty once the
-    /// segment is final.
+    /// Tentative text that may be revised in the next update.
+    ///
+    /// Empty once the segment is final.
     public let hypothesis: String
 
     /// `true` once the audio segment has ended (silence detected by VAD or stream
@@ -30,10 +31,12 @@ public struct TranscriptionResult: Sendable, Equatable {
     /// detection has not run yet.
     public let language: String?
 
-    /// Per-segment breakdown with timing information. Empty until the first segment
-    /// has been finalised.
+    /// Per-segment breakdown with timing information.
+    ///
+    /// Empty until the first segment has been finalised.
     public let segments: [TranscriptionSegment]
 
+    /// Creates a new TranscriptionResult with the supplied values.
     public init(
         text: String,
         hypothesis: String = "",

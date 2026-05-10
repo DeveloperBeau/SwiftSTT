@@ -28,8 +28,9 @@ public protocol StatefulCoreMLModelRunner: Sendable {
 }
 
 /// A `StatefulCoreMLModelRunner` that can spawn an independent runner sharing
-/// the same underlying model but holding its own fresh KV cache. Used by beam
-/// search so each beam can advance its cache independently instead of
+/// the same underlying model but holding its own fresh KV cache.
+///
+/// Used by beam search so each beam can advance its cache independently instead of
 /// re-prefilling on every step.
 ///
 /// Apple does not expose `MLState` copy, so a freshly branched runner starts
@@ -56,17 +57,20 @@ public final class MLStateModelRunner: BranchableStatefulRunner, @unchecked Send
     private let model: MLModel
     private let state: Mutex<MLState?>
 
+    /// Creates a new MLStateModelRunner with the supplied values.
     public init(model: MLModel) {
         self.model = model
         self.state = Mutex<MLState?>(nil)
     }
 
+    /// Branches the runner so it can be advanced independently.
     public func branch() async throws(SwiftWhisperError) -> any BranchableStatefulRunner {
         let clone = MLStateModelRunner(model: model)
         await clone.resetState()
         return clone
     }
 
+    /// Resets the runner's internal state.
     public func resetState() async {
         // Build the state outside the lock so the (potentially expensive)
         // allocation does not stall other actors waiting on the mutex.
@@ -74,6 +78,7 @@ public final class MLStateModelRunner: BranchableStatefulRunner, @unchecked Send
         state.withLock { $0 = newState }
     }
 
+    /// Runs prediction.
     public func predict(
         features: any MLFeatureProvider
     ) async throws(SwiftWhisperError) -> any MLFeatureProvider {

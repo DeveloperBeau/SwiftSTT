@@ -9,6 +9,7 @@ import Testing
 // MARK: - Mock runner
 
 /// Mock that replays the same canned logits queue for every fresh attempt.
+///
 /// The decoder's temperature-fallback loop calls `resetState()` between
 /// attempts, so the mock rewinds its queue each time.
 private final class FallbackMockRunner: StatefulCoreMLModelRunner, @unchecked Sendable {
@@ -133,6 +134,7 @@ private func confidentLogits(vocabSize: Int, hot: Int, value: Float = 30) -> [Fl
 }
 
 /// Gentle distribution where the "winner" beats the field by only ~2 nats.
+///
 /// Designed so `logSoftmax(winner)` lands near `-1.5` and trips strict
 /// log-probability thresholds in fallback tests.
 private func murkyLogits(vocabSize: Int, hot: Int) -> [Float] {
@@ -250,7 +252,8 @@ struct WhisperDecoderAntiHallucinationTests {
         var options = DecodingOptions.default
         options.language = nil
         options.suppressBlank = false
-        options.suppressTokens = [tokenizer.noSpeechToken]  // Whisper masks the no-speech token from emission.
+        // Whisper masks the no-speech token from emission.
+        options.suppressTokens = [tokenizer.noSpeechToken]
         options.temperatureFallback = [0.0]
         options.noSpeechThreshold = 0.5
         // Murky logits land avgLogProb well below 0 so the skip rule fires
@@ -307,7 +310,7 @@ struct WhisperDecoderAntiHallucinationTests {
         do {
             try WhisperDecoder.validate(options: options)
             Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
+        } catch {
             if case .invalidDecodingOption = error {
             } else {
                 Issue.record("wrong error: \(error)")
@@ -322,7 +325,7 @@ struct WhisperDecoderAntiHallucinationTests {
         do {
             try WhisperDecoder.validate(options: options)
             Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
+        } catch {
             if case .invalidDecodingOption = error {
             } else {
                 Issue.record("wrong error: \(error)")

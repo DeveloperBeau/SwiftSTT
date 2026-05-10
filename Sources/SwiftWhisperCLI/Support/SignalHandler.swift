@@ -16,7 +16,10 @@ enum SignalHandler {
 
     nonisolated private static let stopRequested: Mutex<Bool> = Mutex(false)
 
-    /// Installs the SIGINT handler. Idempotent. The C handler defers to
+    /// Installs the SIGINT handler.
+    ///
+    /// Idempotent. The C handler defers to.
+    ///
     /// ``markStopRequested()``.
     nonisolated static func installSIGINT() {
         signal(SIGINT, swiftWhisperHandleSIGINT)
@@ -40,7 +43,9 @@ enum SignalHandler {
     }
 }
 
-/// C-callable SIGINT handler. Forwards to ``SignalHandler/markStopRequested()``.
+/// C-callable SIGINT handler.
+///
+/// Forwards to ``SignalHandler/markStopRequested()``.
 ///
 /// Has to live as a free `@_cdecl` function because Swift closures cannot
 /// safely be cast to a `sig_t` C function pointer under strict concurrency.

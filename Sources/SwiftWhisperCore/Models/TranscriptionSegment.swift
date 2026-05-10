@@ -17,6 +17,7 @@ public struct TranscriptionSegment: Sendable, Equatable {
     /// End time in seconds. `end > start` always holds for non-empty segments.
     public let end: TimeInterval
 
+    /// Creates a new TranscriptionSegment with the supplied values.
     public init(text: String, start: TimeInterval, end: TimeInterval) {
         self.text = text
         self.start = start

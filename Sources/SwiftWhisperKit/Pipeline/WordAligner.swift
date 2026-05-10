@@ -24,6 +24,7 @@ import SwiftWhisperCore
 /// callers using the standard distribution get the proportional fallback.
 public actor WordAligner {
 
+    /// Creates a new WordAligner with the supplied values.
     public init() {}
 
     /// Aligns a segment's words against the audio it covers.
@@ -32,6 +33,7 @@ public actor WordAligner {
     ///   - segment: the segment to align.
     ///   - attentionMatrix: optional `[textFrames x audioFrames]` cross-
     ///     attention matrix. If `nil`, the proportional fallback is used.
+    /// - Returns: per-word timings covering the segment.
     public func align(
         segment: TranscriptionSegment,
         attentionMatrix: [[Float]]? = nil
@@ -105,8 +107,9 @@ public actor WordAligner {
 
     // MARK: - DTW math
 
-    /// Standard dynamic time warping. Given an `N x M` cost matrix, returns
-    /// the lowest-cost monotonic path from `(0,0)` to `(N-1, M-1)` as a list
+    /// Standard dynamic time warping.
+    ///
+    /// Given an `N x M` cost matrix, returns the lowest-cost monotonic path from `(0,0)` to `(N-1, M-1)` as a list
     /// of `(row, col)` index pairs.
     ///
     /// Uses the three classic moves at each step: down, right, diagonal.
@@ -160,8 +163,9 @@ public actor WordAligner {
         return path.reversed()
     }
 
-    /// Sliding-window median filter. Useful for smoothing attention rows
-    /// before feeding them to ``dtwPath(costMatrix:)`` so a single noisy
+    /// Sliding-window median filter.
+    ///
+    /// Useful for smoothing attention rows before feeding them to ``dtwPath(costMatrix:)`` so a single noisy
     /// attention spike does not bend the alignment.
     ///
     /// Returns the input unchanged if `windowSize <= 1` or the input is

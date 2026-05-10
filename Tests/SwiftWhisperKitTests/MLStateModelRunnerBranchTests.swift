@@ -9,8 +9,9 @@ import Testing
 // MARK: - Mock branchable runner
 
 /// In-memory `BranchableStatefulRunner` mock that records reset, predict, and
-/// branch traffic. Acts as a stand-in for `MLStateModelRunner` in tests where
-/// constructing a real Core ML model is not practical.
+/// branch traffic.
+///
+/// Acts as a stand-in for `MLStateModelRunner` in tests where constructing a real Core ML model is not practical.
 private final class MockBranchableRunner: BranchableStatefulRunner, @unchecked Sendable {
 
     struct Counters: Sendable {

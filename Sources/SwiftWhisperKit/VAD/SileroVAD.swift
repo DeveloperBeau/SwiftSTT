@@ -39,15 +39,21 @@ import SwiftWhisperCore
 /// pipeline.
 public actor SileroVAD: VoiceActivityDetector {
 
-    /// Names of the model's input and output features. Default values are a
-    /// best guess for community Core ML conversions of Silero v4 / v5;
+    /// Names of the model's input and output features.
+    ///
+    /// Default values are a best guess for community Core ML conversions of Silero v4 / v5;
     /// override at construction time for a model that uses different names.
     public struct FeatureNames: Sendable, Equatable {
+        /// Name of the audio input feature.
         public var audioInput: String
+        /// Name of the recurrent-state input feature.
         public var stateInput: String
+        /// Name of the probability output feature.
         public var probabilityOutput: String
+        /// Name of the recurrent-state output feature.
         public var stateOutput: String
 
+        /// Creates a new FeatureNames with the supplied values.
         public init(
             audioInput: String,
             stateInput: String,
@@ -60,6 +66,7 @@ public actor SileroVAD: VoiceActivityDetector {
             self.stateOutput = stateOutput
         }
 
+        /// Default feature names commonly used by community Silero v4/v5 Core ML conversions.
         public static let `default` = FeatureNames(
             audioInput: "input",
             stateInput: "state",
@@ -71,8 +78,9 @@ public actor SileroVAD: VoiceActivityDetector {
     /// Number of samples per Silero window at 16 kHz. 32 ms.
     public static let defaultWindowSamples: Int = 512
 
-    /// Recurrent state size for Silero v4. The model expects a `[2, 1, 64]`
-    /// tensor that the model both reads and writes. The actor holds zeros at
+    /// Recurrent state size for Silero v4.
+    ///
+    /// The model expects a `[2, 1, 64]` tensor that the model both reads and writes. The actor holds zeros at
     /// startup and after ``reset()``.
     public static let stateShape: [NSNumber] = [2, 1, 64]
 
@@ -85,6 +93,7 @@ public actor SileroVAD: VoiceActivityDetector {
     /// Carried recurrent state. `nil` means "use zeros on the next predict".
     private var state: MLMultiArray?
 
+    /// Creates a new SileroVAD with the supplied values.
     public init(
         runner: any StatefulCoreMLModelRunner,
         threshold: Float = 0.5,
@@ -100,6 +109,7 @@ public actor SileroVAD: VoiceActivityDetector {
         self.state = nil
     }
 
+    /// Returns whether the chunk contains speech.
     public func isSpeech(chunk: AudioChunk) async -> Bool {
         guard !chunk.samples.isEmpty else { return false }
 
@@ -112,6 +122,7 @@ public actor SileroVAD: VoiceActivityDetector {
         return maxProb >= threshold
     }
 
+    /// Resets the actor's state.
     public func reset() async {
         state = nil
         await runner.resetState()
@@ -120,6 +131,7 @@ public actor SileroVAD: VoiceActivityDetector {
     // MARK: - Window evaluation
 
     /// Splits `samples` into non-overlapping windows of size `windowSize`.
+    ///
     /// The final window is zero-padded to `windowSize`. A buffer shorter than
     /// `windowSize` becomes a single padded window so partial chunks still get
     /// classified.
@@ -240,9 +252,9 @@ extension SileroVAD {
     /// - Parameters:
     ///   - url: directory URL pointing at a compiled `.mlmodelc` package.
     ///   - threshold: probability threshold for speech.
-    ///
-    /// Throws ``SwiftWhisperError/modelLoadFailed(_:)`` if the file is missing
-    /// or Core ML rejects the model.
+    /// - Returns: a configured ``SileroVAD`` ready to score audio frames.
+    /// - Throws: ``SwiftWhisperError/modelLoadFailed(_:)`` if the file is
+    ///   missing or Core ML rejects the model.
     public static func load(
         from url: URL,
         threshold: Float = 0.5

@@ -44,16 +44,18 @@ public actor VADBoundaryRefiner {
     private var consecutiveSpeech: Int = 0
     private var consecutiveSilence: Int = 0
 
-    /// Time at which the current candidate speech run began. Stamped on the
-    /// first ``ingest(isSpeech:sampleCount:)`` call that flipped from
+    /// Time at which the current candidate speech run began.
+    ///
+    /// Stamped on the first ``ingest(isSpeech:sampleCount:)`` call that flipped from
     /// silence-with-zero-streak to silence-with-one-speech-frame, so that
     /// when the hysteresis confirms the transition the start is at the
     /// run's beginning rather than its threshold-crossing point.
     private var pendingStartTime: TimeInterval?
 
     /// Time at which the current candidate silence run began (during a
-    /// confirmed speech segment). Stamped similarly so the end of the
-    /// boundary lines up with the first silent frame of the closing run.
+    /// confirmed speech segment).
+    ///
+    /// Stamped similarly so the end of the boundary lines up with the first silent frame of the closing run.
     private var pendingEndTime: TimeInterval?
 
     /// Locked-in start time for the active speech segment, set when the
@@ -80,8 +82,9 @@ public actor VADBoundaryRefiner {
         self.sampleRate = sampleRate
     }
 
-    /// Feeds one VAD verdict into the refiner. Returns a ``SpeechBoundary``
-    /// when a falling-edge hysteresis test passes (i.e. a speech segment has
+    /// Feeds one VAD verdict into the refiner.
+    ///
+    /// Returns a ``SpeechBoundary`` when a falling-edge hysteresis test passes (i.e. a speech segment has
     /// just closed). Otherwise returns `nil`.
     public func ingest(isSpeech: Bool, sampleCount: Int) async -> SpeechBoundary? {
         // Stamp times before advancing elapsed, so a frame's "start time" is
@@ -138,8 +141,9 @@ public actor VADBoundaryRefiner {
         return emitted
     }
 
-    /// Returns an in-progress boundary if currently in speech. Closes the
-    /// segment at the current elapsed time. Returns `nil` if currently in
+    /// Returns an in-progress boundary if currently in speech.
+    ///
+    /// Closes the segment at the current elapsed time. Returns `nil` if currently in
     /// silence. The refiner remains in its current state. Call ``reset()``
     /// if a fresh observation period is needed.
     public func flush() async -> SpeechBoundary? {

@@ -1,7 +1,9 @@
 import Foundation
 
 /// Formats `TimeInterval` values into the `HH:MM:SS` strings used in CLI
-/// transcription output. ASCII only.
+/// transcription output.
+///
+/// ASCII only.
 ///
 /// The formatter rounds to the nearest second. The pair-formatter
 /// (``format(start:end:)``) bumps the end time up by one second whenever
@@ -31,29 +33,33 @@ enum TimeFormatter {
         return (startStr, endStr)
     }
 
-    /// Formats `seconds` as `HH:MM:SS,mmm` for SubRip (SRT). Negative inputs
-    /// clamp to zero.
+    /// Formats `seconds` as `HH:MM:SS,mmm` for SubRip (SRT).
+    ///
+    /// Negative inputs clamp to zero.
     nonisolated static func srtTimestamp(_ seconds: TimeInterval) -> String {
         let parts = millisecondParts(seconds)
         return String(format: "%02d:%02d:%02d,%03d", parts.h, parts.m, parts.s, parts.ms)
     }
 
-    /// Formats `seconds` as `HH:MM:SS.mmm` for WebVTT. Negative inputs clamp
-    /// to zero.
+    /// Formats `seconds` as `HH:MM:SS.mmm` for WebVTT.
+    ///
+    /// Negative inputs clamp to zero.
     nonisolated static func vttTimestamp(_ seconds: TimeInterval) -> String {
         let parts = millisecondParts(seconds)
         return String(format: "%02d:%02d:%02d.%03d", parts.h, parts.m, parts.s, parts.ms)
     }
 
     /// Formats `seconds` as `HH:MM:SS.mmm` for TTML `begin`/`end` attributes.
+    ///
     /// Functionally identical to ``vttTimestamp(_:)`` but kept under its own
     /// name so callers read clearly at the point of use.
     nonisolated static func ttmlTimestamp(_ seconds: TimeInterval) -> String {
         vttTimestamp(seconds)
     }
 
-    /// Formats `seconds` as `H:MM:SS.mmm` for YouTube SBV. Hours are not
-    /// zero-padded; minutes and seconds are. Negative inputs clamp to zero.
+    /// Formats `seconds` as `H:MM:SS.mmm` for YouTube SBV.
+    ///
+    /// Hours are not zero-padded; minutes and seconds are. Negative inputs clamp to zero.
     nonisolated static func sbvTimestamp(_ seconds: TimeInterval) -> String {
         let parts = millisecondParts(seconds)
         return String(format: "%d:%02d:%02d.%03d", parts.h, parts.m, parts.s, parts.ms)

@@ -36,19 +36,26 @@ import SwiftWhisperCore
 /// Python implementation does not mix the two paths either.
 public actor WhisperDecoder: TokenDecoding {
 
-    /// Hard cap on generated tokens per decode call. Matches the Whisper
-    /// per-segment limit of 224 content tokens.
+    /// Hard cap on generated tokens per decode call.
+    ///
+    /// Matches the Whisper per-segment limit of 224 content tokens.
     public static let maxTokens: Int = 224
 
-    /// Names of the model's input and output features. Default values match
-    /// the argmaxinc/whisperkit-coreml stateful decoder convention. Override
+    /// Names of the model's input and output features.
+    ///
+    /// Default values match the argmaxinc/whisperkit-coreml stateful decoder convention. Override
     /// when wiring against a different model export.
     public struct FeatureNames: Sendable, Equatable {
+        /// Name of the encoder-embeddings input feature.
         public var encoderEmbeds: String
+        /// Name of the token-id input feature.
         public var tokenInput: String
+        /// Name of the KV-cache length input feature.
         public var cacheLength: String
+        /// Name of the logits output feature.
         public var logitsOutput: String
 
+        /// Creates a new FeatureNames with the supplied values.
         public init(
             encoderEmbeds: String,
             tokenInput: String,
@@ -61,6 +68,7 @@ public actor WhisperDecoder: TokenDecoding {
             self.logitsOutput = logitsOutput
         }
 
+        /// Default feature names matching the argmaxinc/whisperkit-coreml stateful decoder export.
         public static let `default` = FeatureNames(
             encoderEmbeds: "encoder_output_embeds",
             tokenInput: "decoder_input_ids",
@@ -75,6 +83,7 @@ public actor WhisperDecoder: TokenDecoding {
     private let featureNames: FeatureNames
     private var rng: any RandomSource
 
+    /// Creates a new WhisperDecoder with the supplied values.
     public init(
         runner: any StatefulCoreMLModelRunner,
         tokenizer: WhisperTokenizer,
@@ -89,8 +98,9 @@ public actor WhisperDecoder: TokenDecoding {
     }
 
     /// Initialiser variant that accepts a runner capable of branching its
-    /// state. Beam search uses the branchable path so each beam owns its own
-    /// KV cache and only re-prefills when its prefix changes.
+    /// state.
+    ///
+    /// Beam search uses the branchable path so each beam owns its own KV cache and only re-prefills when its prefix changes.
     public init(
         branchableRunner: any BranchableStatefulRunner,
         tokenizer: WhisperTokenizer,
@@ -104,6 +114,7 @@ public actor WhisperDecoder: TokenDecoding {
         self.rng = rng
     }
 
+    /// Decodes the input.
     public func decode(
         encoderOutput: MLMultiArray,
         options: DecodingOptions
@@ -126,8 +137,9 @@ public actor WhisperDecoder: TokenDecoding {
 
     /// Retry attempts at successive temperatures until one passes the
     /// anti-hallucination thresholds, or all are exhausted (in which case the
-    /// final attempt is returned). When the final attempt is also flagged as
-    /// silence by the no-speech check, an empty token list is returned.
+    /// final attempt is returned).
+    ///
+    /// When the final attempt is also flagged as silence by the no-speech check, an empty token list is returned.
     private func decodeWithFallback(
         encoderOutput: MLMultiArray,
         options: DecodingOptions
@@ -152,8 +164,9 @@ public actor WhisperDecoder: TokenDecoding {
 
     // MARK: - Single hypothesis (greedy or temperature sampling)
 
-    /// Outcome of one greedy or sampled decode pass. Carries the per-attempt
-    /// statistics that the temperature-fallback loop in
+    /// Outcome of one greedy or sampled decode pass.
+    ///
+    /// Carries the per-attempt statistics that the temperature-fallback loop in
     /// ``decodeWithFallback(encoderOutput:options:)`` consults to decide
     /// whether to retry at a hotter temperature, accept the result, or skip
     /// the segment entirely.
@@ -291,8 +304,9 @@ public actor WhisperDecoder: TokenDecoding {
 
     // MARK: - Beam search
 
-    /// Width-N beam search. Each step expands every beam, scores all
-    /// resulting (beam, token) pairs by sum of log-probabilities, and keeps
+    /// Width-N beam search.
+    ///
+    /// Each step expands every beam, scores all resulting (beam, token) pairs by sum of log-probabilities, and keeps
     /// the top N. Because all beams share a single Core ML KV cache, every
     /// per-beam expansion has to reset the state and replay the prefix +
     /// the beam's tokens to repopulate the cache. That is O(steps^2) work
@@ -382,8 +396,9 @@ public actor WhisperDecoder: TokenDecoding {
 
     // MARK: - Beam search with per-beam KV state
 
-    /// Beam container used by the branchable path. Owns its runner clone and
-    /// tracks how much of its prefix the runner has already consumed so the
+    /// Beam container used by the branchable path.
+    ///
+    /// Owns its runner clone and tracks how much of its prefix the runner has already consumed so the
     /// step loop can avoid redundant resets+replays.
     private struct StatefulBeam {
         var tokens: [WhisperToken]
@@ -391,12 +406,15 @@ public actor WhisperDecoder: TokenDecoding {
         var finished: Bool
         var runner: any BranchableStatefulRunner
         /// Token id sequence (prompt + beam tokens) the runner's KV cache
-        /// already contains. When the next step's required prefix matches
-        /// this, only one new predict is needed; otherwise reset+replay.
+        /// already contains.
+        ///
+        /// When the next step's required prefix matches this, only one new
+        /// predict is needed; otherwise reset+replay.
         var consumedPrefix: [Int]
     }
 
     /// Width-N beam search where each beam owns its own branchable runner.
+    ///
     /// Because KV cache state is independent per beam, the typical step costs
     /// one predict per beam (just the new token) instead of replaying the
     /// full prefix every step.
@@ -567,8 +585,9 @@ public actor WhisperDecoder: TokenDecoding {
     }
 
     /// Resets the runner state and feeds (prompt + already-chosen beam tokens)
-    /// through it so the KV cache reflects this beam's full prefix. Returns
-    /// the logits for the next token slot.
+    /// through it so the KV cache reflects this beam's full prefix.
+    ///
+    /// Returns the logits for the next token slot.
     private func replayBeam(
         encoderOutput: MLMultiArray,
         prompt: [Int],
@@ -641,8 +660,9 @@ public actor WhisperDecoder: TokenDecoding {
         return tokens
     }
 
-    /// Validates user-supplied decoding options. Throws on negative
-    /// temperature, beam width below 1, or the unsupported combination of
+    /// Validates user-supplied decoding options.
+    ///
+    /// Throws on negative temperature, beam width below 1, or the unsupported combination of
     /// beam search with sampling.
     static func validate(options: DecodingOptions) throws(SwiftWhisperError) {
         if options.temperature < 0 {
@@ -670,8 +690,9 @@ public actor WhisperDecoder: TokenDecoding {
         }
     }
 
-    /// Packs the per-step decoder inputs into a feature provider. Encoder
-    /// embeddings are passed every step; the model is free to ignore them
+    /// Packs the per-step decoder inputs into a feature provider.
+    ///
+    /// Encoder embeddings are passed every step; the model is free to ignore them
     /// after the first call once the cross-attention cache is populated.
     static func buildFeatureProvider(
         encoderOutput: MLMultiArray,
@@ -723,7 +744,9 @@ public actor WhisperDecoder: TokenDecoding {
     }
 
     /// Sets `-Float.infinity` at every suppressed index so they cannot be
-    /// picked by argmax. Out-of-range indices are silently ignored.
+    /// picked by argmax.
+    ///
+    /// Out-of-range indices are silently ignored.
     static func applySuppression(
         logits: inout [Float],
         suppressTokens: [Int],
@@ -737,8 +760,9 @@ public actor WhisperDecoder: TokenDecoding {
         }
     }
 
-    /// Returns the index of the largest logit. Ties are broken by lowest
-    /// index (the natural result of a single forward pass).
+    /// Returns the index of the largest logit.
+    ///
+    /// Ties are broken by lowest index (the natural result of a single forward pass).
     static func greedyArgmax(logits: [Float]) -> Int {
         var bestIndex = 0
         var bestValue: Float = -.infinity
@@ -750,13 +774,16 @@ public actor WhisperDecoder: TokenDecoding {
     }
 
     /// Whisper's blank token is the BPE encoding of a single leading space
-    /// (`" "`). Resolving it dynamically avoids hard-coding the id.
+    /// (`" "`).
+    ///
+    /// Resolving it dynamically avoids hard-coding the id.
     static func blankTokenId(tokenizer: WhisperTokenizer) -> Int? {
         let encoded = tokenizer.encode(text: " ")
         return encoded.first
     }
 
     /// Numerically stable softmax over `logits`, scaled by `temperature`.
+    ///
     /// Values at `-Float.infinity` (suppressed entries) contribute zero
     /// probability. The caller is expected to pass `temperature > 0`; a value
     /// of `0` would divide by zero, so this method asserts the contract by
@@ -788,8 +815,9 @@ public actor WhisperDecoder: TokenDecoding {
         return exps
     }
 
-    /// Log-softmax used by beam search scoring. Numerically stable via the
-    /// max-subtraction trick. Suppressed entries (at `-inf`) stay at `-inf`.
+    /// Log-softmax used by beam search scoring.
+    ///
+    /// Numerically stable via the max-subtraction trick. Suppressed entries (at `-inf`) stay at `-inf`.
     static func logSoftmax(logits: [Float]) -> [Float] {
         guard !logits.isEmpty else { return [] }
         var maxLogit: Float = -.infinity
@@ -829,6 +857,7 @@ public actor WhisperDecoder: TokenDecoding {
     }
 
     /// Returns the `k` highest-scoring entries in descending score order.
+    ///
     /// Ties prefer the lower index. If `k > logits.count`, all entries are
     /// returned.
     static func selectTopK(logits: [Float], k: Int) -> [(token: Int, score: Float)] {
@@ -844,8 +873,9 @@ public actor WhisperDecoder: TokenDecoding {
         return Array(sorted.prefix(limit))
     }
 
-    /// Top-p (nucleus) filter. Sorts `probs` descending, keeps the smallest
-    /// prefix whose cumulative mass reaches `threshold`, zeros the rest, and
+    /// Top-p (nucleus) filter.
+    ///
+    /// Sorts `probs` descending, keeps the smallest prefix whose cumulative mass reaches `threshold`, zeros the rest, and
     /// renormalises so the result sums to 1. A `threshold` of `1.0` returns
     /// the input unchanged. Values at or below `0` would degenerate to a
     /// single-token distribution; the caller is expected to validate the
@@ -885,8 +915,9 @@ public actor WhisperDecoder: TokenDecoding {
         return filtered
     }
 
-    /// Applies Whisper's repetition penalty in place. Tokens that already
-    /// appeared in `previousTokens` have their positive logits divided by
+    /// Applies Whisper's repetition penalty in place.
+    ///
+    /// Tokens that already appeared in `previousTokens` have their positive logits divided by
     /// `penalty` and negative logits multiplied; both shrink the relative
     /// likelihood of repeating the token. Out-of-range token ids are
     /// silently ignored.
@@ -902,16 +933,18 @@ public actor WhisperDecoder: TokenDecoding {
         }
     }
 
-    /// Adds the per-token bias values to `logits` in place. Out-of-range
-    /// token ids are silently ignored.
+    /// Adds the per-token bias values to `logits` in place.
+    ///
+    /// Out-of-range token ids are silently ignored.
     static func applyLogitBias(logits: inout [Float], bias: [Int: Float]) {
         for (tokenId, delta) in bias where tokenId >= 0 && tokenId < logits.count {
             logits[tokenId] += delta
         }
     }
 
-    /// Length-based proxy for gzip compression ratio. Whisper's hallucination
-    /// failure mode is to loop on a few tokens, which collapses the unique
+    /// Length-based proxy for gzip compression ratio.
+    ///
+    /// Whisper's hallucination failure mode is to loop on a few tokens, which collapses the unique
     /// character count and inflates the ratio. A healthy English sentence
     /// stays under ~2.0; pathological loops climb past 3.
     ///
@@ -925,6 +958,7 @@ public actor WhisperDecoder: TokenDecoding {
     }
 
     /// Reads the softmax probability of `noSpeechToken` from the raw logits.
+    ///
     /// Used by the decoder at the first generation step to flag silent
     /// segments so the temperature fallback loop can skip them.
     static func noSpeechProbability(logits: [Float], noSpeechToken: Int) -> Float {
@@ -933,9 +967,11 @@ public actor WhisperDecoder: TokenDecoding {
         return probs[noSpeechToken]
     }
 
-    /// Splits a token stream into segments using Whisper's `<|t_start|> ...
-    /// <|t_end|>` timestamp pairs. Only invoked when `DecodingOptions.withoutTimestamps`
-    /// is `false` so the decoder actually emits the timestamp markers.
+    /// Splits a token stream into segments using Whisper's timestamp markers.
+    ///
+    /// Looks for `<|t_start|> ... <|t_end|>` timestamp pairs. Only invoked
+    /// when `DecodingOptions.withoutTimestamps` is `false` so the decoder
+    /// actually emits the timestamp markers.
     ///
     /// Rules:
     ///
@@ -985,8 +1021,9 @@ public actor WhisperDecoder: TokenDecoding {
 
     /// Whisper timestamp token IDs occupy a contiguous range starting at
     /// `<|0.00|>` (the first ID returned by `firstTimestampId`) at 0.02-second
-    /// resolution. The token ID layout is fixed by the tokenizer; we use the
-    /// reference Whisper offset of 50_364 because the tokenizer table is
+    /// resolution.
+    ///
+    /// The token ID layout is fixed by the tokenizer; we use the reference Whisper offset of 50_364 because the tokenizer table is
     /// loaded from the vendor `tokenizer.json` and uses the same constants.
     static func timestampSeconds(forTokenId id: Int) -> TimeInterval {
         let firstTimestampId = 50_364

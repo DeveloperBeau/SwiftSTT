@@ -9,8 +9,9 @@ import Testing
 // MARK: - Mock runner
 
 /// Records every call to `predict` and reset, and yields canned logits per
-/// step from a queue. When the queue runs dry, it serves the configured
-/// `defaultLogits`. Concurrency follows the encoder MockRunner pattern: the
+/// step from a queue.
+///
+/// When the queue runs dry, it serves the configured `defaultLogits`. Concurrency follows the encoder MockRunner pattern: the
 /// type is `@unchecked Sendable` and `Mutex` guards mutable state because
 /// `MLFeatureProvider` is not `Sendable`.
 private final class MockStatefulRunner: StatefulCoreMLModelRunner, @unchecked Sendable {

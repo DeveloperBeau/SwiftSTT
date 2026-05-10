@@ -21,10 +21,12 @@ public struct MLModelRunner: CoreMLModelRunner {
 
     private let model: MLModel
 
+    /// Creates a new MLModelRunner with the supplied values.
     public init(model: MLModel) {
         self.model = model
     }
 
+    /// Runs prediction.
     public func predict(
         features: any MLFeatureProvider
     ) async throws(SwiftWhisperError) -> any MLFeatureProvider {

@@ -3,9 +3,9 @@ import Foundation
 /// Decides whether a given audio chunk contains speech.
 ///
 /// Voice activity detection sits between capture and the heavy mel-plus-decoder
-/// path. Filtering out silence has two practical wins:
+/// path.
 ///
-/// 1. The decoder spends compute only on chunks that might contain words,
+/// Filtering out silence has two practical wins: 1. The decoder spends compute only on chunks that might contain words,
 ///    dropping average inference cost noticeably.
 /// 2. Whisper has a known habit of hallucinating text on silent input. A VAD
 ///    pass is the cheapest defence against that.

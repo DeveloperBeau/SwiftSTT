@@ -18,15 +18,17 @@ import Foundation
 /// regardless of input loudness.
 public struct MelSpectrogramResult: Sendable, Equatable {
 
-    /// Flat row-major buffer of length `nMels * nFrames`. Index with
-    /// `frames[m * nFrames + t]` to read mel band `m` at frame `t`.
+    /// Flat row-major buffer of length `nMels * nFrames`.
+    ///
+    /// Index with `frames[m * nFrames + t]` to read mel band `m` at frame `t`.
     public let frames: [Float]
 
     /// Number of mel filterbank bands. 80 by default, 128 for the large model.
     public let nMels: Int
 
-    /// Number of time frames. Equal to `(samples - frameLength) / hopLength + 1`
-    /// once enough audio has accumulated.
+    /// Number of time frames.
+    ///
+    /// Equal to `(samples - frameLength) / hopLength + 1` once enough audio has accumulated.
     public let nFrames: Int
 
     /// Throws ``SwiftWhisperError/invalidMelDimensions(framesCount:expected:)``

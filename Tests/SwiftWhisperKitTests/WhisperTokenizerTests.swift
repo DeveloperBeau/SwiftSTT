@@ -8,8 +8,9 @@ import Testing
 struct WhisperTokenizerTests {
 
     /// Builds a tokenizer with a synthetic ASCII-only vocab and standard
-    /// Whisper specials. Lets us test encode/decode/special handling without
-    /// needing the real 50k-entry tokenizer.json.
+    /// Whisper specials.
+    ///
+    /// Lets us test encode/decode/special handling without needing the real 50k-entry tokenizer.json.
     static func makeFixtureTokenizer() -> WhisperTokenizer {
         var vocab: [String: Int] = [:]
         for (i, byte) in (0x21...0x7E).enumerated() {

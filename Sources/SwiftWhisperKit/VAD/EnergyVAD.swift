@@ -40,7 +40,9 @@ import SwiftWhisperCore
 public actor EnergyVAD: VoiceActivityDetector {
 
     /// Default amount (dB) the current RMS must exceed the rolling floor by
-    /// before it counts as speech. The fixed floor still applies as a minimum.
+    /// before it counts as speech.
+    ///
+    /// The fixed floor still applies as a minimum.
     public static let defaultMarginDB: Float = 6.0
 
     private let thresholdDB: Float
@@ -82,6 +84,7 @@ public actor EnergyVAD: VoiceActivityDetector {
     }
 
     /// Returns `true` if the chunk is currently part of a speech segment.
+    ///
     /// Stateful: identical chunks fed in different orders may give different answers.
     public func isSpeech(chunk: AudioChunk) async -> Bool {
         guard !chunk.samples.isEmpty else { return inSpeech }
@@ -121,7 +124,9 @@ public actor EnergyVAD: VoiceActivityDetector {
     }
 
     /// Resets the noise floor, hysteresis counter, speech state, and warmup
-    /// counter. Use after a long silence or when switching audio sources.
+    /// counter.
+    ///
+    /// Use after a long silence or when switching audio sources.
     public func reset() async {
         noiseFloorRMS.removeAll(keepingCapacity: true)
         consecutiveSilent = 0
@@ -146,7 +151,9 @@ public actor EnergyVAD: VoiceActivityDetector {
         return result
     }
 
-    /// Linear amplitude to dBFS. Clamps at `1e-10` to avoid `-inf` on silence.
+    /// Linear amplitude to dBFS.
+    ///
+    /// Clamps at `1e-10` to avoid `-inf` on silence.
     static func dB(_ value: Float) -> Float {
         20.0 * log10(max(value, 1e-10))
     }

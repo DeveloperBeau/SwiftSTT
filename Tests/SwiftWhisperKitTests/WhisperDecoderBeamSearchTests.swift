@@ -9,11 +9,13 @@ import Testing
 // MARK: - Beam-aware mock runner
 
 /// Mock that scores the next token by inspecting the previously fed token id.
+///
 /// Beam search resets and re-prefills repeatedly, so the runner has to be
 /// stateless across resets but maintain a record of the most recent input.
 private final class BeamMockRunner: StatefulCoreMLModelRunner, @unchecked Sendable {
 
     /// `tokenScores[lastTokenId]` returns logits to produce on the next call.
+    ///
     /// Calls whose `lastTokenId` is missing fall back to `defaultLogits`.
     typealias ScoreTable = [Int: [Float]]
 
@@ -325,8 +327,9 @@ struct WhisperDecoderBeamSearchTests {
 // MARK: - Branchable runner mock and per-beam state coverage
 
 /// `BranchableStatefulRunner` that scores the next token from the most
-/// recently fed token id. Each branch is a fresh `BranchableMockRunner`
-/// sharing the same score table. Counts how many resets and predicts each
+/// recently fed token id.
+///
+/// Each branch is a fresh `BranchableMockRunner` sharing the same score table. Counts how many resets and predicts each
 /// instance saw so tests can verify per-beam KV state usage.
 private final class BranchableMockRunner: BranchableStatefulRunner, @unchecked Sendable {
 

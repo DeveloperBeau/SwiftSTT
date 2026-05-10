@@ -18,6 +18,8 @@ public protocol AudioInputProvider: Sendable {
     ///     may round to the nearest hardware-friendly size.
     ///   - onChunk: handler called on a Sendable executor (typically a real-
     ///     time audio thread for the production provider). Must not block.
+    /// - Throws: ``SwiftWhisperError`` if the input cannot be started or audio
+    ///   format conversion fails.
     func start(
         targetSampleRate: Double,
         bufferDurationSeconds: Double,

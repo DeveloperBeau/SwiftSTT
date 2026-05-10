@@ -17,8 +17,9 @@ import Foundation
 enum CacheDirectoryOption {
 
     /// Environment variable name checked when no explicit `--cache-dir` flag
-    /// is supplied. Made into a constant so tests can refer to it without a
-    /// magic string.
+    /// is supplied.
+    ///
+    /// Made into a constant so tests can refer to it without a magic string.
     nonisolated static let environmentVariableName = "SWIFTWHISPER_CACHE_DIR"
 
     nonisolated static func resolve(

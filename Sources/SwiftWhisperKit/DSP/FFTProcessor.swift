@@ -45,8 +45,9 @@ public struct FFTProcessor {
     private let dft: vDSP.DiscreteFourierTransform<Float>
     private let window: [Float]
 
-    /// Builds the Hann window and DFT setup. Throws
-    /// ``SwiftWhisperCore/SwiftWhisperError/fftSetupFailed(_:)`` if the DFT
+    /// Builds the Hann window and DFT setup.
+    ///
+    /// Throws ``SwiftWhisperCore/SwiftWhisperError/fftSetupFailed(_:)`` if the DFT
     /// rejects the configured size.
     public init() throws(SwiftWhisperError) {
         try self.init(fftSize: Self.fftSize)

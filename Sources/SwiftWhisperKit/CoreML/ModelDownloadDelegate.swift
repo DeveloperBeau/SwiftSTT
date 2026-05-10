@@ -3,8 +3,9 @@ import SwiftWhisperCore
 import Synchronization
 
 /// Bridges `URLSessionDownloadDelegate` callbacks into per-task
-/// `AsyncThrowingStream` continuations. URLSession invokes delegate methods
-/// from a private serial queue, so the delegate keeps its mutable state
+/// `AsyncThrowingStream` continuations.
+///
+/// URLSession invokes delegate methods from a private serial queue, so the delegate keeps its mutable state
 /// inside a `Mutex<DelegateState>`. The class is `@unchecked Sendable`
 /// because URLSession's delegate API is not Sendable-aware.
 final class ModelDownloadDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
@@ -15,6 +16,7 @@ final class ModelDownloadDelegate: NSObject, URLSessionDownloadDelegate, @unchec
         var continuation: AsyncThrowingStream<DownloadProgress, any Error>.Continuation
         var destination: URL
         /// Optional terminal hook fired exactly once on success or failure.
+        ///
         /// Lets the actor await per-file completion without listening to the stream.
         var finished: (@Sendable (Result<URL, any Error>) -> Void)?
     }

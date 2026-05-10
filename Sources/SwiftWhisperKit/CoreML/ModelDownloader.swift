@@ -28,6 +28,7 @@ public actor ModelDownloader {
     private let mode: ModelDownloadMode
     private let urlSession: URLSession
     /// Foreground session reused for HuggingFace tree API calls.
+    ///
     /// Background `URLSessionConfiguration` instances reject `data(from:)`,
     /// so listing always goes through this session.
     private let listingSession: URLSession
@@ -126,6 +127,7 @@ public actor ModelDownloader {
     }
 
     /// Returns a `ModelBundle` for an already-downloaded model.
+    ///
     /// Throws `modelFileMissing` if the model has not been downloaded or
     /// expected files are absent.
     public func bundle(for model: WhisperModel) throws(SwiftWhisperError) -> ModelBundle {
@@ -154,7 +156,9 @@ public actor ModelDownloader {
         )
     }
 
-    /// Starts downloading a model. Returns a stream of progress updates.
+    /// Starts downloading a model.
+    ///
+    /// Returns a stream of progress updates.
     ///
     /// Throws `modelDownloadFailed` if a download for this model is already
     /// in flight. Completed models are skipped (the stream yields `.complete`

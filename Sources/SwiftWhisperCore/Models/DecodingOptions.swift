@@ -27,19 +27,22 @@ public enum TaskKind: String, Sendable, Equatable {
 /// should look the same when the rest of the pipeline is bit-exact.
 public struct DecodingOptions: Sendable, Equatable {
 
-    /// ISO-639-1 language code (`"en"`, `"de"`, `"ja"`, ...). When `nil`, Whisper
-    /// runs a quick language detection pass on the first audio segment before
+    /// ISO-639-1 language code (`"en"`, `"de"`, `"ja"`, ...).
+    ///
+    /// When `nil`, Whisper runs a quick language detection pass on the first audio segment before
     /// decoding the rest.
     public var language: String?
 
     /// Whether to transcribe in the source language or translate to English.
     public var task: TaskKind
 
-    /// Sampling temperature for the softmax. `0` means greedy decoding. Values up
-    /// to about `0.6` are useful when greedy gets caught in a repetition loop.
+    /// Sampling temperature for the softmax.
+    ///
+    /// `0` means greedy decoding. Values up to about `0.6` are useful when greedy gets caught in a repetition loop.
     public var temperature: Float
 
-    /// Beam search width. `1` is greedy or temperature sampling depending on
+    /// Beam search width. `1` is greedy or temperature sampling depending on.
+    ///
     /// ``temperature``. Higher values trade compute for accuracy.
     ///
     /// SwiftWhisper's beam path shares a single Core ML KV cache between beams
@@ -49,64 +52,78 @@ public struct DecodingOptions: Sendable, Equatable {
     public var beamSize: Int
 
     /// Whether to feed the decoder a `<|prevtimestamp|>` prefix from the previous
-    /// segment. Helps consistency across long audio at the cost of one extra token.
+    /// segment.
+    ///
+    /// Helps consistency across long audio at the cost of one extra token.
     public var usePrefixTimestamps: Bool
 
     /// When `true` (the default), the decoder injects `<|notimestamps|>` into the
-    /// prompt prefix and Whisper produces text-only output. Set to `false` to make
-    /// the decoder emit timestamp tokens for `parseSegments` to split into
+    /// prompt prefix and Whisper produces text-only output.
+    ///
+    /// Set to `false` to make the decoder emit timestamp tokens for `parseSegments` to split into
     /// ``TranscriptionSegment`` boundaries.
     public var withoutTimestamps: Bool
 
-    /// Whether to suppress the blank token at position 0. Disabling this lets the
-    /// decoder emit silence as empty output, which is occasionally useful for
+    /// Whether to suppress the blank token at position 0.
+    ///
+    /// Disabling this lets the decoder emit silence as empty output, which is occasionally useful for
     /// alignment but usually harmful.
     public var suppressBlank: Bool
 
-    /// Token IDs to forbid the decoder from picking. Useful for blocking specific
-    /// vocabulary that shows up as hallucination on silent audio. Empty by default.
+    /// Token IDs to forbid the decoder from picking.
+    ///
+    /// Useful for blocking specific vocabulary that shows up as hallucination on silent audio. Empty by default.
     public var suppressTokens: [Int]
 
     /// Temperatures to retry with when the previous attempt fails the anti-hallucination
-    /// thresholds. The decoder runs the first temperature, checks the result against
-    /// ``logProbThreshold`` and ``compressionRatioThreshold``, and falls back to the
+    /// thresholds.
+    ///
+    /// The decoder runs the first temperature, checks the result against ``logProbThreshold`` and ``compressionRatioThreshold``, and falls back to the
     /// next temperature if either check fails. The reference Python implementation
     /// uses `[0.0, 0.2, 0.4, 0.6, 0.8, 1.0]`.
     public var temperatureFallback: [Float]
 
     /// Average per-token log-probability below which an attempt is considered
-    /// degenerate and triggers temperature fallback. Reference value is `-1.0`.
+    /// degenerate and triggers temperature fallback.
+    ///
+    /// Reference value is `-1.0`.
     public var logProbThreshold: Float
 
-    /// Probability of the no-speech token at the first generation step. When the
-    /// observed value exceeds this threshold AND the average log-probability falls
+    /// Probability of the no-speech token at the first generation step.
+    ///
+    /// When the observed value exceeds this threshold AND the average log-probability falls
     /// below ``logProbThreshold``, the segment is treated as silence and the decoder
     /// returns no tokens for it. Reference value is `0.6`.
     public var noSpeechThreshold: Float
 
-    /// Decoded-text length divided by unique-character count. Whisper's failure mode
-    /// is to loop on a few tokens (`"the the the ..."`) which collapses unique-char
+    /// Decoded-text length divided by unique-character count.
+    ///
+    /// Whisper's failure mode is to loop on a few tokens (`"the the the ..."`) which collapses unique-char
     /// count and pushes this ratio up. Above the threshold triggers fallback.
     /// Reference value is `2.4`.
     public var compressionRatioThreshold: Float
 
-    /// Top-p (nucleus) sampling cutoff. After softmax the probabilities are sorted
-    /// descending; the smallest set whose mass reaches `topP` is kept and the rest
+    /// Top-p (nucleus) sampling cutoff.
+    ///
+    /// After softmax the probabilities are sorted descending; the smallest set whose mass reaches `topP` is kept and the rest
     /// is zeroed. `1.0` (the default) keeps the full distribution intact. Only used
     /// when ``temperature`` is positive.
     public var topP: Float
 
     /// Multiplicative penalty applied to logits of tokens that already appeared in
-    /// the running output. Positive logits get divided by `repetitionPenalty`,
-    /// negative logits multiplied; both push the token's probability down. `1.0`
+    /// the running output.
+    ///
+    /// Positive logits get divided by `repetitionPenalty`, negative logits multiplied; both push the token's probability down. `1.0`
     /// (the default) disables the penalty.
     public var repetitionPenalty: Float
 
-    /// Additive bias applied per-token to the raw logits before softmax. Positive
-    /// values raise a token's likelihood, negative values lower it. Out-of-range
+    /// Additive bias applied per-token to the raw logits before softmax.
+    ///
+    /// Positive values raise a token's likelihood, negative values lower it. Out-of-range
     /// keys are silently ignored.
     public var logitBias: [Int: Float]
 
+    /// Creates a new DecodingOptions with the supplied values.
     public init(
         language: String? = nil,
         task: TaskKind = .transcribe,

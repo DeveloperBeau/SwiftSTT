@@ -24,6 +24,7 @@ public struct ModelBundle: Sendable, Equatable {
     /// Path to the `tokenizer.json` vocabulary file.
     public let tokenizerURL: URL
 
+    /// Creates a new ModelBundle with the supplied values.
     public init(
         model: WhisperModel,
         directory: URL,

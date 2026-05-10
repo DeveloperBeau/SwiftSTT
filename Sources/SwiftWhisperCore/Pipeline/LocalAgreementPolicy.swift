@@ -31,6 +31,7 @@ public actor LocalAgreementPolicy {
         /// New tokens that may still change in the next update.
         public let hypothesis: String
 
+        /// Creates a new Output with the supplied values.
         public init(confirmed: String, hypothesis: String) {
             self.confirmed = confirmed
             self.hypothesis = hypothesis
@@ -48,6 +49,7 @@ public actor LocalAgreementPolicy {
     }
 
     /// Drops all remembered hypotheses and confirmed state.
+    ///
     /// Use after the audio source restarts or the VAD detects a silence transition.
     public func reset() {
         hypothesisRing.removeAll(keepingCapacity: true)
@@ -81,8 +83,9 @@ public actor LocalAgreementPolicy {
         return newlyStable
     }
 
-    /// Stateless comparison of two hypotheses. Returns the longest common
-    /// prefix as confirmed text and the remainder of `current` as the
+    /// Stateless comparison of two hypotheses.
+    ///
+    /// Returns the longest common prefix as confirmed text and the remainder of `current` as the
     /// hypothesis.
     ///
     /// This method does not modify actor state. For streaming use, prefer

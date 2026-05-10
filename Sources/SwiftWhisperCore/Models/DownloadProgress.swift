@@ -29,6 +29,7 @@ public struct DownloadProgress: Sendable, Equatable {
     /// Which stage of the download pipeline we are in.
     public let phase: Phase
 
+    /// Creates a new DownloadProgress with the supplied values.
     public init(
         totalFiles: Int,
         completedFiles: Int,
@@ -45,8 +46,9 @@ public struct DownloadProgress: Sendable, Equatable {
         self.phase = phase
     }
 
-    /// Fraction complete as a value between 0.0 and 1.0. Returns 0 when
-    /// `totalBytes` is zero to avoid division by zero on empty listings.
+    /// Fraction complete as a value between 0.0 and 1.0.
+    ///
+    /// Returns 0 when `totalBytes` is zero to avoid division by zero on empty listings.
     public var fractionComplete: Double {
         guard totalBytes > 0 else { return 0 }
         return Double(totalBytesDownloaded) / Double(totalBytes)

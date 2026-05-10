@@ -9,6 +9,7 @@ import SwiftWhisperCore
 /// OS caches the result for subsequent loads.
 public actor ModelLoader {
 
+    /// Creates a new ModelLoader with the supplied values.
     public init() {}
 
     /// Loads a compiled audio encoder model from an `AudioEncoder.mlmodelc` directory.
@@ -44,7 +45,10 @@ public actor ModelLoader {
 
 /// Loaded encoder and decoder pair, ready to wire into the pipeline.
 public struct LoadedModels {
+    /// URL of the compiled encoder `.mlmodelc`.
     public let encoder: MLModel
+    /// URL of the compiled decoder `.mlmodelc`.
     public let decoder: MLModel
+    /// URL of the tokenizer JSON file.
     public let tokenizerURL: URL
 }

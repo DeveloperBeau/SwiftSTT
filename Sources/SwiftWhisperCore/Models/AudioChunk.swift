@@ -20,8 +20,9 @@ import Foundation
 /// ```
 public struct AudioChunk: Sendable, Equatable {
 
-    /// PCM samples in the range `-1.0 ... 1.0`. Length is not fixed but should stay
-    /// small enough to keep streaming latency bounded.
+    /// PCM samples in the range `-1.0 ... 1.0`.
+    ///
+    /// Length is not fixed but should stay small enough to keep streaming latency bounded.
     public let samples: [Float]
 
     /// Sample rate in Hz. The pipeline assumes 16 000 throughout; other values are
@@ -30,9 +31,12 @@ public struct AudioChunk: Sendable, Equatable {
     public let sampleRate: Int
 
     /// Wall-clock offset of the first sample in this chunk, measured from the moment
-    /// capture started. Used to align tokens with their original audio position.
+    /// capture started.
+    ///
+    /// Used to align tokens with their original audio position.
     public let timestamp: TimeInterval
 
+    /// Creates a new AudioChunk with the supplied values.
     public init(samples: [Float], sampleRate: Int = 16_000, timestamp: TimeInterval) {
         self.samples = samples
         self.sampleRate = sampleRate

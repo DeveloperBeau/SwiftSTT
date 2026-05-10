@@ -3,7 +3,9 @@ import Foundation
 import SwiftWhisperCore
 
 /// Output formats supported by the `transcribe` and `transcribe-mic`
-/// subcommands. Selected via `--format` on the CLI.
+/// subcommands.
+///
+/// Selected via `--format` on the CLI.
 public enum OutputFormat: String, ExpressibleByArgument, Sendable, CaseIterable {
     case text
     case srt
@@ -15,8 +17,9 @@ public enum OutputFormat: String, ExpressibleByArgument, Sendable, CaseIterable 
 }
 
 /// A formatter that turns ``TranscriptionSegment`` values into per-format text
-/// suitable for stdout. Stream-friendly formats (text, srt, vtt, ndjson, sbv)
-/// print as segments arrive; buffered formats (json, ttml) collect all segments
+/// suitable for stdout.
+///
+/// Stream-friendly formats (text, srt, vtt, ndjson, sbv) print as segments arrive; buffered formats (json, ttml) collect all segments
 /// and emit the document once via ``footer(segments:)``.
 nonisolated public protocol SegmentFormatter: Sendable {
 
@@ -45,6 +48,7 @@ nonisolated public protocol SegmentFormatter: Sendable {
 
 extension SegmentFormatter {
 
+    /// Separator emitted between files when concatenating multi-file output.
     nonisolated public func fileSeparator(path: String, fileIndex: Int) -> String? {
         let name = (path as NSString).lastPathComponent
         return fileIndex == 0 ? "# \(name)" : "\n# \(name)"
@@ -54,6 +58,7 @@ extension SegmentFormatter {
 /// Builds the right ``SegmentFormatter`` for the supplied ``OutputFormat``.
 public enum SegmentFormatters {
 
+    /// Returns the segment formatter for the requested format.
     nonisolated public static func make(_ format: OutputFormat) -> any SegmentFormatter {
         switch format {
         case .text: TextFormatter()
@@ -72,39 +77,50 @@ public enum SegmentFormatters {
 /// Matches the original M7 transcription output: `[HH:MM:SS -> HH:MM:SS] text`.
 nonisolated public struct TextFormatter: SegmentFormatter {
 
+    /// Creates a new TextFormatter with the supplied values.
     public init() {}
 
+    /// Header text emitted before any segment lines.
     nonisolated public func header() -> String? { nil }
 
+    /// Formats a single segment for output.
     nonisolated public func format(segment: TranscriptionSegment, index: Int) -> String {
         let (start, end) = TimeFormatter.format(start: segment.start, end: segment.end)
         return "[\(start) -> \(end)] \(segment.text)"
     }
 
+    /// Footer text emitted after all segment lines.
     nonisolated public func footer(segments: [TranscriptionSegment]) -> String? { nil }
 
+    /// Whether the formatter must buffer all segments before emitting output.
     nonisolated public var bufferingRequired: Bool { false }
 }
 
 // MARK: - SRT
 
-/// SubRip subtitle format. Each cue is a 1-based sequence number, a comma-
-/// separated `HH:MM:SS,mmm --> HH:MM:SS,mmm` timestamp line, the text, and a
+/// SubRip subtitle format.
+///
+/// Each cue is a 1-based sequence number, a comma- separated `HH:MM:SS,mmm --> HH:MM:SS,mmm` timestamp line, the text, and a
 /// blank line.
 nonisolated public struct SRTFormatter: SegmentFormatter {
 
+    /// Creates a new SRTFormatter with the supplied values.
     public init() {}
 
+    /// Header text emitted before any segment lines.
     nonisolated public func header() -> String? { nil }
 
+    /// Formats a single segment for output.
     nonisolated public func format(segment: TranscriptionSegment, index: Int) -> String {
         let start = TimeFormatter.srtTimestamp(segment.start)
         let end = TimeFormatter.srtTimestamp(segment.end)
         return "\(index + 1)\n\(start) --> \(end)\n\(segment.text)\n"
     }
 
+    /// Footer text emitted after all segment lines.
     nonisolated public func footer(segments: [TranscriptionSegment]) -> String? { nil }
 
+    /// Whether the formatter must buffer all segments before emitting output.
     nonisolated public var bufferingRequired: Bool { false }
 }
 
@@ -114,33 +130,43 @@ nonisolated public struct SRTFormatter: SegmentFormatter {
 /// timestamps and a trailing blank line per cue.
 nonisolated public struct VTTFormatter: SegmentFormatter {
 
+    /// Creates a new VTTFormatter with the supplied values.
     public init() {}
 
+    /// Header text emitted before any segment lines.
     nonisolated public func header() -> String? { "WEBVTT\n" }
 
+    /// Formats a single segment for output.
     nonisolated public func format(segment: TranscriptionSegment, index: Int) -> String {
         let start = TimeFormatter.vttTimestamp(segment.start)
         let end = TimeFormatter.vttTimestamp(segment.end)
         return "\(start) --> \(end)\n\(segment.text)\n"
     }
 
+    /// Footer text emitted after all segment lines.
     nonisolated public func footer(segments: [TranscriptionSegment]) -> String? { nil }
 
+    /// Whether the formatter must buffer all segments before emitting output.
     nonisolated public var bufferingRequired: Bool { false }
 }
 
 // MARK: - JSON
 
-/// Structured JSON output. Buffers all segments and emits a single document on
-/// ``footer(segments:)``. `start` and `end` are encoded as `Float` seconds.
+/// Structured JSON output.
+///
+/// Buffers all segments and emits a single document on ``footer(segments:)``. `start` and `end` are encoded as `Float` seconds.
 nonisolated public struct JSONFormatter: SegmentFormatter {
 
+    /// Creates a new JSONFormatter with the supplied values.
     public init() {}
 
+    /// Header text emitted before any segment lines.
     nonisolated public func header() -> String? { nil }
 
+    /// Formats a single segment for output.
     nonisolated public func format(segment: TranscriptionSegment, index: Int) -> String { "" }
 
+    /// Footer text emitted after all segment lines.
     nonisolated public func footer(segments: [TranscriptionSegment]) -> String? {
         let payload = SingleFilePayload(
             segments: segments.map(JSONSegmentPayload.init(segment:))
@@ -148,6 +174,7 @@ nonisolated public struct JSONFormatter: SegmentFormatter {
         return Self.encode(payload)
     }
 
+    /// Whether the formatter must buffer all segments before emitting output.
     nonisolated public var bufferingRequired: Bool { true }
 
     nonisolated static func encode(_ value: some Encodable) -> String? {
@@ -160,30 +187,37 @@ nonisolated public struct JSONFormatter: SegmentFormatter {
 
 // MARK: - NDJSON
 
-/// Newline-delimited JSON. Each segment becomes a single-line JSON object
-/// terminated by `\n`. Streamable; the segment line is yielded as soon as it
+/// Newline-delimited JSON.
+///
+/// Each segment becomes a single-line JSON object terminated by `\n`. Streamable; the segment line is yielded as soon as it
 /// is decoded.
 ///
 /// Batch mode emits a `{"file":"path"}` line before each file's segments so
 /// downstream consumers can group results without inspecting timestamps.
 nonisolated public struct NDJSONFormatter: SegmentFormatter {
 
+    /// Creates a new NDJSONFormatter with the supplied values.
     public init() {}
 
+    /// Header text emitted before any segment lines.
     nonisolated public func header() -> String? { nil }
 
+    /// Formats a single segment for output.
     nonisolated public func format(segment: TranscriptionSegment, index: Int) -> String {
         let payload = JSONSegmentPayload(segment: segment)
         return Self.encodeLine(payload) ?? ""
     }
 
+    /// Footer text emitted after all segment lines.
     nonisolated public func footer(segments: [TranscriptionSegment]) -> String? { nil }
 
+    /// Separator emitted between files when concatenating multi-file output.
     nonisolated public func fileSeparator(path: String, fileIndex: Int) -> String? {
         let payload = NDJSONFileMarker(file: path)
         return Self.encodeLine(payload)
     }
 
+    /// Whether the formatter must buffer all segments before emitting output.
     nonisolated public var bufferingRequired: Bool { false }
 
     nonisolated static func encodeLine(_ value: some Encodable) -> String? {
@@ -200,20 +234,25 @@ nonisolated struct NDJSONFileMarker: Encodable, Sendable {
 
 // MARK: - TTML
 
-/// Timed Text Markup Language output. Buffers all segments and emits a full
-/// XML document on ``footer(segments:)``.
+/// Timed Text Markup Language output.
+///
+/// Buffers all segments and emits a full XML document on ``footer(segments:)``.
 ///
 /// Each segment becomes a `<p begin="..." end="...">text</p>` inside a single
 /// `<div>`. Special characters in text are escaped against the five XML
 /// predefined entities.
 nonisolated public struct TTMLFormatter: SegmentFormatter {
 
+    /// Creates a new TTMLFormatter with the supplied values.
     public init() {}
 
+    /// Header text emitted before any segment lines.
     nonisolated public func header() -> String? { nil }
 
+    /// Formats a single segment for output.
     nonisolated public func format(segment: TranscriptionSegment, index: Int) -> String { "" }
 
+    /// Footer text emitted after all segment lines.
     nonisolated public func footer(segments: [TranscriptionSegment]) -> String? {
         var lines: [String] = []
         lines.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
@@ -232,14 +271,17 @@ nonisolated public struct TTMLFormatter: SegmentFormatter {
         return lines.joined(separator: "\n")
     }
 
+    /// Separator emitted between files when concatenating multi-file output.
     nonisolated public func fileSeparator(path: String, fileIndex: Int) -> String? {
         nil
     }
 
+    /// Whether the formatter must buffer all segments before emitting output.
     nonisolated public var bufferingRequired: Bool { true }
 
-    /// Escapes the five XML predefined entities. Anything else is passed
-    /// through. Order matters: `&` must be escaped first or it would double-
+    /// Escapes the five XML predefined entities.
+    ///
+    /// Anything else is passed through. Order matters: `&` must be escaped first or it would double-
     /// escape the entities written for the other characters.
     nonisolated static func escapeXML(_ string: String) -> String {
         var result = string
@@ -254,22 +296,28 @@ nonisolated public struct TTMLFormatter: SegmentFormatter {
 
 // MARK: - SBV
 
-/// YouTube SubViewer (SBV) format. Each cue is a `H:MM:SS.mmm,H:MM:SS.mmm`
-/// time line, the text, and a trailing blank line. Streamable.
+/// YouTube SubViewer (SBV) format.
+///
+/// Each cue is a `H:MM:SS.mmm,H:MM:SS.mmm` time line, the text, and a trailing blank line. Streamable.
 nonisolated public struct SBVFormatter: SegmentFormatter {
 
+    /// Creates a new SBVFormatter with the supplied values.
     public init() {}
 
+    /// Header text emitted before any segment lines.
     nonisolated public func header() -> String? { nil }
 
+    /// Formats a single segment for output.
     nonisolated public func format(segment: TranscriptionSegment, index: Int) -> String {
         let start = TimeFormatter.sbvTimestamp(segment.start)
         let end = TimeFormatter.sbvTimestamp(segment.end)
         return "\(start),\(end)\n\(segment.text)\n"
     }
 
+    /// Footer text emitted after all segment lines.
     nonisolated public func footer(segments: [TranscriptionSegment]) -> String? { nil }
 
+    /// Whether the formatter must buffer all segments before emitting output.
     nonisolated public var bufferingRequired: Bool { false }
 }
 

@@ -5,9 +5,9 @@ import SwiftWhisperCore
 ///
 /// The decoder is the most complex component in Whisper. It consumes the
 /// encoder's embedding plus a growing sequence of previously generated tokens,
-/// producing one new token per forward pass. Implementations are responsible for:
+/// producing one new token per forward pass.
 ///
-/// - Maintaining the KV cache across steps so the per-token cost stays linear.
+/// Implementations are responsible for: - Maintaining the KV cache across steps so the per-token cost stays linear.
 /// - Applying logit filters (suppress blank, suppress non-speech, timestamp rules).
 /// - Sampling the next token (greedy, beam search, or temperature sampling
 ///   based on `DecodingOptions`).
@@ -21,6 +21,7 @@ public protocol TokenDecoding: Actor {
     ///   - options: sampling parameters and language hints.
     /// - Returns: tokens in generation order, ending with the end-of-text token
     ///   (which callers usually drop before display).
+    /// - Throws: ``SwiftWhisperError`` if Core ML inference fails.
     func decode(
         encoderOutput: MLMultiArray,
         options: DecodingOptions
