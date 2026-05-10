@@ -21,5 +21,6 @@ public protocol AudioEncoding: Actor {
     ///   padding or trimming to the model's expected frame count.
     /// - Returns: encoder output as a Core ML `MLMultiArray`, ready to feed
     ///   into the decoder.
+    /// - Throws: ``SwiftWhisperError`` if Core ML inference fails.
     func encode(spectrogram: MelSpectrogramResult) async throws(SwiftWhisperError) -> MLMultiArray
 }

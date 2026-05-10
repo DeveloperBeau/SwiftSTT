@@ -10,6 +10,7 @@ import Testing
 struct AudioFileInputTests {
 
     /// Writes a synthetic mono Float32 WAV to a temp file and returns the URL.
+    ///
     /// The waveform is a 440 Hz sine so the test data is non-trivial.
     static func makeSineWave(
         sampleRate: Double,

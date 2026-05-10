@@ -1,8 +1,9 @@
 import ArgumentParser
 import Foundation
 
-/// Sink for transcription output. Wraps either standard output or a file
-/// handle so the rest of the CLI can stream lines through one writer without
+/// Sink for transcription output.
+///
+/// Wraps either standard output or a file handle so the rest of the CLI can stream lines through one writer without
 /// branching on every call.
 ///
 /// Use ``stdout()`` for the default behaviour and ``file(at:noClobber:)`` for
@@ -21,13 +22,16 @@ final class OutputDestination: @unchecked Sendable {
         self.shouldClose = shouldClose
     }
 
-    /// Wraps `FileHandle.standardOutput`. Never closes on `close()`.
+    /// Wraps `FileHandle.standardOutput`.
+    ///
+    /// Never closes on `close()`.
     nonisolated static func stdout() -> OutputDestination {
         OutputDestination(handle: .standardOutput, shouldClose: false)
     }
 
-    /// Opens (or truncates) the file at `path` for writing. Throws a
-    /// `ValidationError` when `noClobber` is set and the file already exists,
+    /// Opens (or truncates) the file at `path` for writing.
+    ///
+    /// Throws a `ValidationError` when `noClobber` is set and the file already exists,
     /// when tilde expansion produces an unreachable path, or when the
     /// underlying file system call fails (read-only mount, missing parent
     /// directory, permission denied).
@@ -84,8 +88,9 @@ final class OutputDestination: @unchecked Sendable {
         handle.write(data)
     }
 
-    /// Closes the underlying handle when this destination owns one. No-op for
-    /// stdout.
+    /// Closes the underlying handle when this destination owns one.
+    ///
+    /// No-op for stdout.
     nonisolated func close() {
         guard shouldClose else { return }
         try? handle.close()

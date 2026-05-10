@@ -9,5 +9,6 @@ import Foundation
 ///
 /// > Note: Reserved for future use; carries no behaviour yet.
 public struct AudioConverter: Sendable {
+    /// Creates a new AudioConverter with the supplied values.
     public init() {}
 }

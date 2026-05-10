@@ -69,15 +69,18 @@ public actor TranscriptionPipeline {
     private var isRunning = false
 
     /// Frames the pipeline has already retired from the rolling mel buffer.
+    ///
     /// Used to compute the per-decode `windowOffsetSeconds`.
     private var melCursorFrames: Int = 0
 
     /// Shared box that the `@Sendable` audio callback and the actor can both
-    /// access. Holds the chunk continuation behind a `Mutex` so the callback
-    /// can yield without crossing the actor boundary, and `stop()` can finish
+    /// access.
+    ///
+    /// Holds the chunk continuation behind a `Mutex` so the callback can yield without crossing the actor boundary, and `stop()` can finish
     /// it from the actor side.
     private var chunkBox: ChunkBox?
 
+    /// Creates a new TranscriptionPipeline with the supplied values.
     public init(
         audioInput: any AudioInputProvider,
         vad: any VoiceActivityDetector,
@@ -149,7 +152,9 @@ public actor TranscriptionPipeline {
         return segmentStream
     }
 
-    /// Cancels capture and finishes the segment stream. Idempotent.
+    /// Cancels capture and finishes the segment stream.
+    ///
+    /// Idempotent.
     public func stop() async {
         guard isRunning else { return }
         isRunning = false

@@ -56,20 +56,23 @@ public actor MelSpectrogram: MelSpectrogramProcessor {
     private let fft: FFTProcessor
     private var leftover: [Float] = []
 
-    /// Rolling per-mel-band column buffer. Streaming callers feed PCM through
-    /// ``process(chunk:)`` and read the accumulated mel matrix back via
+    /// Rolling per-mel-band column buffer.
+    ///
+    /// Streaming callers feed PCM through ``process(chunk:)`` and read the accumulated mel matrix back via
     /// ``snapshot()``, then call ``advance(framesConsumed:)`` to slide the window
     /// after a successful decode.
     private var rolling: [[Float]]
     private var rollingFrameCount: Int = 0
 
-    /// Creates a mel processor. Propagates any error from the underlying
-    /// ``FFTProcessor`` setup.
+    /// Creates a mel processor.
+    ///
+    /// Propagates any error from the underlying ``FFTProcessor`` setup.
     ///
     /// - Parameters:
     ///   - nMels: number of mel bands. 80 for tiny/base/small/medium models,
     ///     128 for large.
     ///   - sampleRate: audio sample rate. 16 000 throughout the standard pipeline.
+    /// - Throws: ``SwiftWhisperError`` if the underlying FFT setup fails.
     public init(nMels: Int = 80, sampleRate: Float = 16_000) throws(SwiftWhisperError) {
         self.nMels = nMels
         self.sampleRate = sampleRate
@@ -112,8 +115,9 @@ public actor MelSpectrogram: MelSpectrogramProcessor {
         return result
     }
 
-    /// Drops the carry-over buffer and the rolling snapshot. Call after a
-    /// stream restart so the next frame starts at sample zero and the next
+    /// Drops the carry-over buffer and the rolling snapshot.
+    ///
+    /// Call after a stream restart so the next frame starts at sample zero and the next
     /// snapshot is empty.
     public func reset() async {
         leftover.removeAll(keepingCapacity: true)
@@ -131,8 +135,9 @@ public actor MelSpectrogram: MelSpectrogramProcessor {
     }
 
     /// Returns a flattened copy of the rolling buffer in `[nMels x nFrames]`
-    /// row-major layout. Subsequent ``advance(framesConsumed:)`` calls do not
-    /// mutate the returned value.
+    /// row-major layout.
+    ///
+    /// Subsequent ``advance(framesConsumed:)`` calls do not mutate the returned value.
     public func snapshot() throws(SwiftWhisperError) -> MelSpectrogramResult {
         guard rollingFrameCount > 0 else {
             return try MelSpectrogramResult(frames: [], nMels: nMels, nFrames: 0)
@@ -147,6 +152,7 @@ public actor MelSpectrogram: MelSpectrogramProcessor {
     }
 
     /// Drops the first `framesConsumed` columns from the rolling buffer.
+    ///
     /// Negative or zero is a no-op. Values larger than ``currentFrameCount()``
     /// clamp to a full clear so callers can ask for "consume everything"
     /// without bookkeeping.

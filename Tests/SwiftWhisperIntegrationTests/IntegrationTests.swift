@@ -6,7 +6,9 @@ import Testing
 @testable import SwiftWhisperKit
 
 /// End-to-end suite that downloads a real Whisper model and runs it through
-/// the full encoder/decoder pipeline. Disabled by default. Run with:
+/// the full encoder/decoder pipeline.
+///
+/// Disabled by default. Run with:.
 ///
 /// ```
 /// SWIFTWHISPER_RUN_INTEGRATION=1 swift test --filter SwiftWhisperIntegrationTests
@@ -85,8 +87,9 @@ struct IntegrationTests {
         return WhisperModel(rawValue: raw) ?? .tiny
     }
 
-    /// Generates a deterministic synthetic audio buffer. Uses a sine sweep
-    /// from 200 Hz to 4 kHz with low-amplitude band-limited noise added in.
+    /// Generates a deterministic synthetic audio buffer.
+    ///
+    /// Uses a sine sweep from 200 Hz to 4 kHz with low-amplitude band-limited noise added in.
     /// Values stay in `[-1.0, 1.0]`.
     private func makeSyntheticAudio(seconds: Int, sampleRate: Int) -> [Float] {
         let total = seconds * sampleRate

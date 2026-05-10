@@ -34,6 +34,7 @@ public struct BPETokenizer: Sendable {
     private let reverseVocab: [Int: String]
     private let mergeRanks: [String: Int]
 
+    /// Creates a new BPETokenizer with the supplied values.
     public init(
         vocab: [String: Int],
         merges: [(String, String)]
@@ -54,26 +55,34 @@ public struct BPETokenizer: Sendable {
         self.mergeRanks = ranks
     }
 
+    /// Creates a new BPETokenizer with the supplied values.
     public init() {
         self.init(vocab: [:], merges: [])
     }
 
+    /// Creates a new BPETokenizer with the supplied values.
     public init(json: TokenizerJSON) {
         let merges = json.model.merges.map { ($0.first, $0.second) }
         self.init(vocab: json.model.vocab, merges: merges)
     }
 
+    /// Number of entries in the BPE vocabulary.
     public var vocabularySize: Int { vocab.count }
 
-    /// Look up a token ID. Returns `nil` for unknown tokens.
+    /// Look up a token ID.
+    ///
+    /// Returns `nil` for unknown tokens.
     public func id(for token: String) -> Int? { vocab[token] }
 
-    /// Look up a token string. Returns `nil` for unknown IDs.
+    /// Look up a token string.
+    ///
+    /// Returns `nil` for unknown IDs.
     public func token(for id: Int) -> String? { reverseVocab[id] }
 
     // MARK: - Encoding
 
     /// Encodes a chunk of text (already split by pre-tokenization) into token IDs.
+    ///
     /// Bytes are mapped to unicode chars, then BPE-merged.
     public func encode(chunk text: String) -> [Int] {
         let mapped = mapBytesToUnicode(text)
@@ -116,7 +125,9 @@ public struct BPETokenizer: Sendable {
 
     // MARK: - Decoding
 
-    /// Decodes a sequence of token IDs back into text. Unknown IDs are skipped.
+    /// Decodes a sequence of token IDs back into text.
+    ///
+    /// Unknown IDs are skipped.
     public func decode(tokens: [Int]) -> String {
         let joined = tokens.compactMap { reverseVocab[$0] }.joined()
         var bytes: [UInt8] = []
@@ -131,8 +142,9 @@ public struct BPETokenizer: Sendable {
 
     // MARK: - Byte/unicode mapping construction
 
-    /// Builds GPT-2's byte-to-unicode dictionary. Bytes that print cleanly
-    /// keep their natural code point; the rest get mapped into the
+    /// Builds GPT-2's byte-to-unicode dictionary.
+    ///
+    /// Bytes that print cleanly keep their natural code point; the rest get mapped into the
     /// `0x100`+ range so every byte has a printable representative.
     private static func makeByteToUnicode() -> [UInt8: Character] {
         var bs: [Int] = []

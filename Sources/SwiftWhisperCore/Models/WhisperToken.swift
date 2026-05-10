@@ -15,11 +15,13 @@ public struct WhisperToken: Sendable, Equatable {
     /// The token's index in the Whisper BPE vocabulary.
     public let id: Int
 
-    /// The decoded text fragment. May be a partial word, a punctuation mark, or
-    /// an empty string for special tokens.
+    /// The decoded text fragment.
+    ///
+    /// May be a partial word, a punctuation mark, or an empty string for special tokens.
     public let text: String
 
     /// Softmax probability of this token at the decoding step that produced it.
+    ///
     /// Defaults to `1.0` for tokens that were not sampled (for example, prompt prefixes).
     public let probability: Float
 
@@ -28,6 +30,7 @@ public struct WhisperToken: Sendable, Equatable {
     /// timestamps or no timestamp token was nearby.
     public let timestamp: TimeInterval?
 
+    /// Creates a new WhisperToken with the supplied values.
     public init(
         id: Int,
         text: String,

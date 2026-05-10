@@ -27,11 +27,15 @@ public actor AudioFileInput: AudioInputProvider {
     private var isRunning = false
     private let completionBox: CompletionBox
 
+    /// Creates a new AudioFileInput with the supplied values.
     public init(fileURL: URL) {
         self.fileURL = fileURL
         self.completionBox = CompletionBox()
     }
 
+    /// Starts the input.
+    ///
+    /// Calls `onChunk` for each captured buffer.
     public func start(
         targetSampleRate: Double,
         bufferDurationSeconds: Double,
@@ -83,6 +87,7 @@ public actor AudioFileInput: AudioInputProvider {
         }
     }
 
+    /// Stops the input and finishes the chunk stream.
     public func stop() async {
         guard isRunning else { return }
         isRunning = false
@@ -93,8 +98,9 @@ public actor AudioFileInput: AudioInputProvider {
         readTask = nil
     }
 
-    /// Awaits the read loop's completion. Returns once the file reaches EOF
-    /// or ``stop()`` cancels the loop.
+    /// Awaits the read loop's completion.
+    ///
+    /// Returns once the file reaches EOF or ``stop()`` cancels the loop.
     public func waitUntilComplete() async {
         await completionBox.wait()
     }
@@ -173,8 +179,9 @@ public actor AudioFileInput: AudioInputProvider {
 // MARK: - CompletionBox
 
 /// Lets external callers `await` the read loop's end without holding actor
-/// state hostage. The read loop runs as a detached `Task`, so we can't simply
-/// `await readTask.value` from arbitrary contexts (that would block the actor).
+/// state hostage.
+///
+/// The read loop runs as a detached `Task`, so we can't simply `await readTask.value` from arbitrary contexts (that would block the actor).
 private final class CompletionBox: @unchecked Sendable {
 
     private let mutex: Mutex<State>

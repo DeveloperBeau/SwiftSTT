@@ -66,8 +66,9 @@ public actor AVAudioCapture: AudioCapturer {
         }
     }
 
-    /// Asks the provider to start producing audio. Forwards each delivered
-    /// buffer onto ``audioStream`` as an ``SwiftWhisperCore/AudioChunk``.
+    /// Asks the provider to start producing audio.
+    ///
+    /// Forwards each delivered buffer onto ``audioStream`` as an ``SwiftWhisperCore/AudioChunk``.
     ///
     /// Throws whatever the provider throws. For ``AVMicrophoneInput`` that
     /// includes ``SwiftWhisperCore/SwiftWhisperError/micPermissionDenied``,
@@ -95,7 +96,9 @@ public actor AVAudioCapture: AudioCapturer {
         isCapturing = true
     }
 
-    /// Stops the provider and finishes ``audioStream``. Idempotent.
+    /// Stops the provider and finishes ``audioStream``.
+    ///
+    /// Idempotent.
     public func stopCapture() async {
         guard isCapturing else { return }
         await provider.stop()

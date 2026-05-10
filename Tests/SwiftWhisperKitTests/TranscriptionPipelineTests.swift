@@ -113,8 +113,9 @@ private final class MockRunner: CoreMLModelRunner, @unchecked Sendable {
 // MARK: - Resettable mock stateful runner
 
 /// Resets its generation queue on each `resetState()` call so multiple decode
-/// cycles produce the same token sequence. The agreement policy requires
-/// identical output from successive decode passes.
+/// cycles produce the same token sequence.
+///
+/// The agreement policy requires identical output from successive decode passes.
 private final class ResettableMockStatefulRunner: StatefulCoreMLModelRunner, @unchecked Sendable {
 
     private struct State {

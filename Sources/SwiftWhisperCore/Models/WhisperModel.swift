@@ -22,6 +22,7 @@ public enum WhisperModel: String, CaseIterable, Sendable, Identifiable {
     case small
     case largeV3Turbo  // openai_whisper-large-v3-turbo
 
+    /// Stable identifier for the model variant.
     public var id: String { rawValue }
 
     /// HuggingFace repository that hosts the Core ML-converted models.
@@ -37,6 +38,7 @@ public enum WhisperModel: String, CaseIterable, Sendable, Identifiable {
         }
     }
 
+    /// User-facing display name for the model.
     public var displayName: String {
         switch self {
         case .tiny: "Tiny"
@@ -46,8 +48,9 @@ public enum WhisperModel: String, CaseIterable, Sendable, Identifiable {
         }
     }
 
-    /// Rough download size in bytes. Useful for showing a size estimate before
-    /// the user commits to downloading.
+    /// Rough download size in bytes.
+    ///
+    /// Useful for showing a size estimate before the user commits to downloading.
     public var approximateSizeBytes: Int64 {
         switch self {
         case .tiny: 150_000_000
@@ -58,8 +61,9 @@ public enum WhisperModel: String, CaseIterable, Sendable, Identifiable {
     }
 
     /// Approximate peak resident memory (in bytes) when the model is loaded
-    /// and actively decoding. The figure is roughly twice the on-disk size to
-    /// account for the encoder activations and the decoder KV cache held by
+    /// and actively decoding.
+    ///
+    /// The figure is roughly twice the on-disk size to account for the encoder activations and the decoder KV cache held by
     /// `MLState`. Used by ``recommended(forPhysicalMemoryBytes:)`` to gate
     /// suggestions on smaller devices.
     public var approximatePeakRuntimeBytes: Int64 {
@@ -89,8 +93,9 @@ public enum WhisperModel: String, CaseIterable, Sendable, Identifiable {
     }
 
     /// Convenience that asks the host process for `physicalMemory` and feeds
-    /// it into ``recommended(forPhysicalMemoryBytes:)``. Returns the same
-    /// model on every call for the lifetime of the process.
+    /// it into ``recommended(forPhysicalMemoryBytes:)``.
+    ///
+    /// Returns the same model on every call for the lifetime of the process.
     public static func recommendedForCurrentDevice() -> WhisperModel {
         recommended(forPhysicalMemoryBytes: ProcessInfo.processInfo.physicalMemory)
     }

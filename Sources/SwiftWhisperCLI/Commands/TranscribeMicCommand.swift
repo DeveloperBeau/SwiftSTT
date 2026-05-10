@@ -4,8 +4,9 @@ import Foundation
 import SwiftWhisperCore
 import SwiftWhisperKit
 
-/// Live-mic transcription. Uses ``AVMicrophoneInput`` instead of the file
-/// reader and stops on Ctrl+C (SIGINT) or `--max-duration` timeout.
+/// Live-mic transcription.
+///
+/// Uses ``AVMicrophoneInput`` instead of the file reader and stops on Ctrl+C (SIGINT) or `--max-duration` timeout.
 ///
 /// > Note: Microphone access requires `NSMicrophoneUsageDescription` in the
 /// > host binary's `Info.plist`. The bare `swift run` binary does not have
@@ -161,13 +162,15 @@ struct TranscribeMicCommand: AsyncParsableCommand {
         }
     }
 
-    /// `EX_NOPERM` from `sysexits.h`. Distinct from the generic `1` so callers
-    /// (e.g. shell scripts wrapping the CLI) can detect a permission failure.
+    /// `EX_NOPERM` from `sysexits.h`.
+    ///
+    /// Distinct from the generic `1` so callers (e.g. shell scripts wrapping the CLI) can detect a permission failure.
     static let permissionDeniedExitCode: Int32 = 77
 
     /// Polls ``SignalHandler/isStopRequested()`` every 100 ms and races it
-    /// against an optional `--max-duration` deadline. Returns when either
-    /// fires.
+    /// against an optional `--max-duration` deadline.
+    ///
+    /// Returns when either fires.
     private static func watchUntilStop(maxDuration: Double?) async {
         let pollNs: UInt64 = 100_000_000
         let deadline: Date? = maxDuration.map { Date().addingTimeInterval($0) }
@@ -178,8 +181,9 @@ struct TranscribeMicCommand: AsyncParsableCommand {
     }
 
     /// Prints a multi-line guidance message to stderr describing how to grant
-    /// microphone access on each platform. Called only on a confirmed
-    /// `micPermissionDenied`.
+    /// microphone access on each platform.
+    ///
+    /// Called only on a confirmed `micPermissionDenied`.
     static func printPermissionGuidance() {
         writeStderr(
             """

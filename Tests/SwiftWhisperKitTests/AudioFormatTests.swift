@@ -17,7 +17,9 @@ struct AudioFormatTests {
     }
 
     /// Synthesizes a 440 Hz sine wave and writes it through `AVAudioFile` in
-    /// the requested container/codec settings. Returns the file URL.
+    /// the requested container/codec settings.
+    ///
+    /// Returns the file URL.
     static func writeSine(
         sampleRate: Double,
         durationSeconds: Double,
@@ -170,8 +172,9 @@ struct AudioFormatTests {
         #expect(collector.totalSamples > 0)
     }
 
-    /// Probes whether `AVAudioFile` can write an AAC `.m4a` on this host. The
-    /// CI runner usually can; some sandboxed environments cannot. Used to gate
+    /// Probes whether `AVAudioFile` can write an AAC `.m4a` on this host.
+    ///
+    /// The CI runner usually can; some sandboxed environments cannot. Used to gate
     /// the M4A test case so unavailable codecs don't fail the suite.
     static func m4aWritable() -> Bool {
         let probeURL = FileManager.default.temporaryDirectory

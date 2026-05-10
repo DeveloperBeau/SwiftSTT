@@ -23,17 +23,24 @@ public struct WhisperTokenizer: Sendable {
     private let timestampPrefix = "<|"
     private let timestampSuffix = "|>"
 
+    /// Token id that marks end-of-text.
     public let endOfTextToken: Int
+    /// Token id that marks start-of-transcript.
     public let startOfTranscriptToken: Int
+    /// Token id that disables timestamp emission.
     public let noTimestampsToken: Int
+    /// Token id that selects the transcribe task.
     public let transcribeToken: Int
+    /// Token id that selects the translate task.
     public let translateToken: Int
 
-    /// Whisper's `<|nospeech|>` marker. The decoder reads its softmax
-    /// probability at the first generation step to decide whether the segment
+    /// Whisper's `<|nospeech|>` marker.
+    ///
+    /// The decoder reads its softmax probability at the first generation step to decide whether the segment
     /// is silence and should be skipped.
     public let noSpeechToken: Int
 
+    /// Creates a new WhisperTokenizer with the supplied values.
     public init(bpe: BPETokenizer = BPETokenizer(), specialTokens: [String: Int] = [:]) {
         self.bpe = bpe
         self.specialTokens = specialTokens
@@ -70,8 +77,9 @@ public struct WhisperTokenizer: Sendable {
 
     // MARK: - Encoding
 
-    /// Encodes text into Whisper token IDs. Special tokens (`<|...|>`) match
-    /// verbatim and are emitted as their direct ID. The remaining text is
+    /// Encodes text into Whisper token IDs.
+    ///
+    /// Special tokens (`<|...|>`) match verbatim and are emitted as their direct ID. The remaining text is
     /// pre-tokenized by whitespace, byte-mapped, and BPE-merged.
     public func encode(text: String) -> [Int] {
         guard !specialTokens.isEmpty else {
@@ -87,13 +95,15 @@ public struct WhisperTokenizer: Sendable {
         }
     }
 
-    /// Decodes a sequence of token IDs into text. Special tokens are stripped
-    /// from the output by default. Use ``decode(tokens:keepingSpecials:)`` to
+    /// Decodes a sequence of token IDs into text.
+    ///
+    /// Special tokens are stripped from the output by default. Use ``decode(tokens:keepingSpecials:)`` to
     /// keep them.
     public func decode(tokens: [Int]) -> String {
         decode(tokens: tokens, keepingSpecials: false)
     }
 
+    /// Decodes the input.
     public func decode(tokens: [Int], keepingSpecials: Bool) -> String {
         var output = ""
         var bpeRun: [Int] = []
@@ -121,6 +131,7 @@ public struct WhisperTokenizer: Sendable {
 
     // MARK: - Special token classification
 
+    /// Performs `isSpecial`.
     public func isSpecial(token: Int) -> Bool {
         reverseSpecial[token] != nil
     }
@@ -144,8 +155,9 @@ public struct WhisperTokenizer: Sendable {
         case text(String)
     }
 
-    /// Splits the input on any literal special-token string. Order of scanning
-    /// matters for nested matches; we sort by descending length so the longest
+    /// Splits the input on any literal special-token string.
+    ///
+    /// Order of scanning matters for nested matches; we sort by descending length so the longest
     /// match wins when prefixes overlap.
     private func splitOnSpecialTokens(_ text: String) -> [Fragment] {
         let tokens = specialTokens.keys.sorted { $0.count > $1.count }
@@ -175,8 +187,9 @@ public struct WhisperTokenizer: Sendable {
         return fragments
     }
 
-    /// Whisper's pre-tokenizer is regex-driven. This simplified version splits
-    /// on whitespace boundaries while keeping leading whitespace attached to
+    /// Whisper's pre-tokenizer is regex-driven.
+    ///
+    /// This simplified version splits on whitespace boundaries while keeping leading whitespace attached to
     /// the following word, which matches the most common BPE expectation.
     /// Good enough for the BPE merge step on most ASCII English input.
     private func preTokenize(_ text: String) -> [String] {

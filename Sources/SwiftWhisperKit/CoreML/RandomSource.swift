@@ -15,25 +15,30 @@ public protocol RandomSource: Sendable {
 /// Default `RandomSource` that defers to the system CSPRNG.
 public struct SystemRandom: RandomSource {
 
+    /// Creates a new SystemRandom with the supplied values.
     public init() {}
 
+    /// Returns the next pseudo-random value.
     public mutating func next() -> UInt64 {
         var rng = SystemRandomNumberGenerator()
         return rng.next()
     }
 }
 
-/// Deterministic `RandomSource` for tests. Uses SplitMix64, which is small,
-/// well-distributed for non-cryptographic use, and produces the same sequence
+/// Deterministic `RandomSource` for tests.
+///
+/// Uses SplitMix64, which is small, well-distributed for non-cryptographic use, and produces the same sequence
 /// for the same seed.
 public struct SeededRandom: RandomSource {
 
     private var state: UInt64
 
+    /// Creates a new SeededRandom with the supplied values.
     public init(seed: UInt64) {
         self.state = seed
     }
 
+    /// Returns the next pseudo-random value.
     public mutating func next() -> UInt64 {
         state &+= 0x9E37_79B9_7F4A_7C15
         var z = state

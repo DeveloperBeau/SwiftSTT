@@ -16,6 +16,7 @@ public struct SpeechBoundary: Sendable, Equatable {
     /// End time in seconds. `endTime >= startTime` always holds.
     public let endTime: TimeInterval
 
+    /// Creates a new SpeechBoundary with the supplied values.
     public init(startTime: TimeInterval, endTime: TimeInterval) {
         self.startTime = startTime
         self.endTime = endTime

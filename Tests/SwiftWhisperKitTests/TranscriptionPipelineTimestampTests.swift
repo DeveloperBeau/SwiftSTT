@@ -81,8 +81,9 @@ private final class TSMockEncoderRunner: CoreMLModelRunner, @unchecked Sendable 
     }
 }
 
-/// Replays a queue of token-id sequences. Each call to ``resetState()``
-/// starts the next queued sequence. Each ``predict(...)`` call returns
+/// Replays a queue of token-id sequences.
+///
+/// Each call to ``resetState()`` starts the next queued sequence. Each ``predict(...)`` call returns
 /// either a default (during prefill) or the next token in the active
 /// sequence. The number of prefill tokens is supplied per sequence.
 private final class TSScriptedDecoderRunner: StatefulCoreMLModelRunner, @unchecked Sendable {

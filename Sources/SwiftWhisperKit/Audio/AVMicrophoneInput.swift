@@ -29,10 +29,14 @@ public actor AVMicrophoneInput: AudioInputProvider {
     private var interruptionObserver: NSObjectProtocol?
     #endif
 
+    /// Creates a new AVMicrophoneInput with the supplied values.
     public init() {
         self.box = CaptureBox()
     }
 
+    /// Starts the input.
+    ///
+    /// Calls `onChunk` for each captured buffer.
     public func start(
         targetSampleRate: Double,
         bufferDurationSeconds: Double,
@@ -100,6 +104,7 @@ public actor AVMicrophoneInput: AudioInputProvider {
         }
     }
 
+    /// Stops the input and finishes the chunk stream.
     public func stop() async {
         guard isCapturing else { return }
         box.teardown()
@@ -160,8 +165,9 @@ public actor AVMicrophoneInput: AudioInputProvider {
 
 // MARK: - CaptureBox
 
-/// Wraps non-`Sendable` AVFoundation refs. Mutable fields are written once on
-/// the actor before the tap installs, then read-only from the audio thread.
+/// Wraps non-`Sendable` AVFoundation refs.
+///
+/// Mutable fields are written once on the actor before the tap installs, then read-only from the audio thread.
 private final class CaptureBox: @unchecked Sendable {
     let engine = AVAudioEngine()
     var converter: AVAudioConverter?

@@ -18,16 +18,21 @@ import SwiftWhisperCore
 /// ANE, climbing to 300 ms for the large turbo model.
 public actor WhisperEncoder: AudioEncoding {
 
+    /// Number of mel frames the encoder expects per call.
     public static let expectedFrames: Int = 3_000
+    /// Name of the mel-spectrogram input feature.
     public static let inputFeatureName: String = "melspectrogram_features"
+    /// Name of the encoder-output feature.
     public static let outputFeatureName: String = "encoder_output_embeds"
 
     private let runner: any CoreMLModelRunner
 
+    /// Creates a new WhisperEncoder with the supplied values.
     public init(runner: any CoreMLModelRunner) {
         self.runner = runner
     }
 
+    /// Encodes the input.
     public func encode(spectrogram: MelSpectrogramResult) async throws(SwiftWhisperError)
         -> MLMultiArray
     {
@@ -39,8 +44,9 @@ public actor WhisperEncoder: AudioEncoding {
 
     // MARK: - Pure helpers (visible to tests)
 
-    /// Pads with zeros or trims to exactly `frames` time steps. Layout assumes
-    /// row-major `[nMels x nFrames]` per ``MelSpectrogramResult``.
+    /// Pads with zeros or trims to exactly `frames` time steps.
+    ///
+    /// Layout assumes row-major `[nMels x nFrames]` per ``MelSpectrogramResult``.
     static func padOrTrim(
         _ spectrogram: MelSpectrogramResult,
         toFrames frames: Int

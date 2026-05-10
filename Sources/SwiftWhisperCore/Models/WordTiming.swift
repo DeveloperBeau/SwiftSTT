@@ -21,6 +21,7 @@ public struct WordTiming: Sendable, Equatable {
     /// Inferred end time in seconds. `end >= start` always holds.
     public let end: TimeInterval
 
+    /// Creates a new WordTiming with the supplied values.
     public init(word: String, start: TimeInterval, end: TimeInterval) {
         self.word = word
         self.start = start
