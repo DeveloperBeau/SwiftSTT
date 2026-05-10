@@ -198,7 +198,7 @@ struct WhisperEncoderTests {
         do {
             _ = try WhisperEncoder.extractEmbeddings(from: provider)
             Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
+        } catch {
             if case .decoderFailure = error {
             } else {
                 Issue.record("wrong error: \(error)")
@@ -214,7 +214,7 @@ struct WhisperEncoderTests {
         do {
             _ = try WhisperEncoder.extractEmbeddings(from: provider)
             Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
+        } catch {
             if case .decoderFailure = error {
             } else {
                 Issue.record("wrong error: \(error)")
@@ -268,7 +268,7 @@ struct WhisperEncoderTests {
         do {
             _ = try await encoder.encode(spectrogram: mel)
             Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
+        } catch {
             #expect(error == .decoderFailure("boom"))
         }
     }

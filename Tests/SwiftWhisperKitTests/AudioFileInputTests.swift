@@ -133,7 +133,7 @@ struct AudioFileInputTests {
                 bufferDurationSeconds: 0.064
             ) { @Sendable _ in }
             Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
+        } catch {
             switch error {
             case .audioCaptureFailed:
                 break

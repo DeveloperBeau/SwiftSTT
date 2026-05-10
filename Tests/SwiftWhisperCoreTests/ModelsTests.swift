@@ -24,7 +24,7 @@ struct ModelsTests {
         do {
             _ = try MelSpectrogramResult(frames: [0, 0, 0], nMels: 2, nFrames: 5)
             Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
+        } catch {
             #expect(error == .invalidMelDimensions(framesCount: 3, expected: 10))
         }
     }
