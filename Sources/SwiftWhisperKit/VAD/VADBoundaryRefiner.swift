@@ -138,7 +138,7 @@ public actor VADBoundaryRefiner {
 
     /// Returns an in-progress boundary if currently in speech. Closes the
     /// segment at the current elapsed time. Returns `nil` if currently in
-    /// silence. The refiner remains in its current state — call ``reset()``
+    /// silence. The refiner remains in its current state. Call ``reset()``
     /// if a fresh observation period is needed.
     public func flush() async -> SpeechBoundary? {
         guard inSpeech, let segStart = currentSegmentStart else { return nil }
