@@ -1,0 +1,46 @@
+name: Integration
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Whisper model to download for the run"
+        required: false
+        default: "tiny"
+        type: choice
+        options:
+          - tiny
+          - base
+          - small
+          - largeV3Turbo
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  integration:
+    name: Real .mlmodelc transcription
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      SWIFTWHISPER_RUN_INTEGRATION: "1"
+      SWIFTWHISPER_INTEGRATION_MODEL: ${{ inputs.model || 'tiny' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          if [ -d "/Applications/Xcode_16.4.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_16.4.app
+          elif [ -d "/Applications/Xcode_16.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_16.app
+          fi
+          xcodebuild -version
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Run integration tests
+        run: swift test --filter SwiftWhisperIntegrationTests
