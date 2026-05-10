@@ -13,10 +13,13 @@ import SwiftWhisperCore
 /// as soon as the file is opened and conversion is configured. Use
 /// ``waitUntilComplete()`` to await EOF (or a `stop()`-induced cancellation).
 ///
-/// Format tolerance: WAV at any rate that `AVAudioConverter` can resample (16
-/// kHz mono is the safest input). M4A and CAF will work if `AVAudioFile` can
-/// open them on the host platform; corner cases throw
-/// ``SwiftWhisperCore/SwiftWhisperError/audioCaptureFailed(_:)``.
+/// Format tolerance: anything `AVAudioFile` can open and `AVAudioConverter`
+/// can resample to 16 kHz mono Float32. WAV, AIFF, and CAF are the well-tested
+/// containers. M4A (AAC) typically works when the host platform has the codec
+/// available; MP3 likewise depends on platform codec presence. When the
+/// container or codec is unavailable, ``start(targetSampleRate:bufferDurationSeconds:onChunk:)``
+/// throws ``SwiftWhisperCore/SwiftWhisperError/audioCaptureFailed(_:)`` with
+/// the underlying reason.
 public actor AudioFileInput: AudioInputProvider {
 
     private let fileURL: URL
