@@ -24,8 +24,17 @@ struct DownloadCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Override the model cache directory. Defaults to ~/Library/Application Support/SwiftWhisper/Models.")
     var cacheDir: String?
 
+    @Flag(name: .long, help: "Use a system-managed background URLSession so the transfer survives process suspension on iOS. On macOS the CLI runs in the foreground anyway; the flag mostly exists to exercise the API.")
+    var background: Bool = false
+
     func run() async throws {
-        let downloader = ModelDownloader(cacheDirectory: CacheDirectoryOption.resolve(cacheDir))
+        let mode: ModelDownloadMode = background
+            ? .background(identifier: "swiftwhisper.cli.\(model.rawValue)")
+            : .foreground
+        let downloader = ModelDownloader(
+            cacheDirectory: CacheDirectoryOption.resolve(cacheDir),
+            mode: mode
+        )
 
         if await downloader.isDownloaded(model) {
             print("\(model.rawValue) already downloaded.")
