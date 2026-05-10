@@ -2,6 +2,19 @@ import Foundation
 
 /// Available Whisper model sizes, matching the pre-converted Core ML models
 /// published by argmaxinc on HuggingFace.
+///
+/// ## What this enum does not cover
+///
+/// - **Speaker diarization**. Whisper produces a single transcription stream;
+///   assigning each segment to a speaker requires a separate model such as
+///   pyannote. Not in scope for this package.
+/// - **Punctuation restoration on languages without it in the training data**.
+///   Whisper inserts punctuation for English and the major European languages;
+///   lower-resource languages need a dedicated text model.
+/// - **Voice activity detection**. The package provides `EnergyVAD` and
+///   `SileroVAD`. Neither is downloaded through this enum; Silero models live
+///   at <https://github.com/snakers4/silero-vad> and must be Core ML
+///   compiled by the caller and loaded via `SileroVAD.load(from:)`.
 public enum WhisperModel: String, CaseIterable, Sendable, Identifiable {
 
     case tiny
