@@ -316,3 +316,184 @@ struct WhisperDecoderBeamSearchTests {
         #expect(WhisperDecoder.logSoftmax(logits: []).isEmpty)
     }
 }
+
+// MARK: - Branchable runner mock and per-beam state coverage
+
+/// `BranchableStatefulRunner` that scores the next token from the most
+/// recently fed token id. Each branch is a fresh `BranchableMockRunner`
+/// sharing the same score table. Counts how many resets and predicts each
+/// instance saw so tests can verify per-beam KV state usage.
+private final class BranchableMockRunner: BranchableStatefulRunner, @unchecked Sendable {
+
+    typealias ScoreTable = [Int: [Float]]
+
+    struct Counters {
+        var resetCount: Int = 0
+        var predictCount: Int = 0
+        var branchCount: Int = 0
+        var lastSeenToken: Int? = nil
+    }
+
+    private let scoreTable: ScoreTable
+    private let defaultLogits: [Float]
+    private let logitsName: String
+    private let tokenInputName: String
+    private let counters: Mutex<Counters>
+
+    init(
+        scoreTable: ScoreTable,
+        defaultLogits: [Float],
+        logitsName: String = WhisperDecoder.FeatureNames.default.logitsOutput,
+        tokenInputName: String = WhisperDecoder.FeatureNames.default.tokenInput
+    ) {
+        self.scoreTable = scoreTable
+        self.defaultLogits = defaultLogits
+        self.logitsName = logitsName
+        self.tokenInputName = tokenInputName
+        self.counters = Mutex<Counters>(Counters())
+    }
+
+    var resetCount: Int { counters.withLock { $0.resetCount } }
+    var predictCount: Int { counters.withLock { $0.predictCount } }
+    var branchCount: Int { counters.withLock { $0.branchCount } }
+
+    func resetState() async {
+        counters.withLock {
+            $0.resetCount += 1
+            $0.lastSeenToken = nil
+        }
+    }
+
+    func predict(
+        features: any MLFeatureProvider
+    ) async throws(SwiftWhisperError) -> any MLFeatureProvider {
+        let token = features.featureValue(for: tokenInputName)?.multiArrayValue
+        let tokenId = token.map { Int($0[[0, 0] as [NSNumber]].int32Value) } ?? -1
+
+        let logits: [Float] = counters.withLock { state in
+            state.predictCount += 1
+            let previous = state.lastSeenToken ?? tokenId
+            state.lastSeenToken = tokenId
+            return scoreTable[previous] ?? defaultLogits
+        }
+
+        do {
+            let array = try MLMultiArray(
+                shape: [1, 1, NSNumber(value: logits.count)],
+                dataType: .float32
+            )
+            let pointer = array.dataPointer.bindMemory(to: Float.self, capacity: logits.count)
+            for i in 0..<logits.count {
+                pointer[i] = logits[i]
+            }
+            return try MLDictionaryFeatureProvider(dictionary: [logitsName: array])
+        } catch {
+            throw .decoderFailure("mock provider: \(error.localizedDescription)")
+        }
+    }
+
+    func branch() async throws(SwiftWhisperError) -> any BranchableStatefulRunner {
+        counters.withLock { $0.branchCount += 1 }
+        let child = BranchableMockRunner(
+            scoreTable: scoreTable,
+            defaultLogits: defaultLogits,
+            logitsName: logitsName,
+            tokenInputName: tokenInputName
+        )
+        await child.resetState()
+        return child
+    }
+}
+
+@Suite("WhisperDecoder beam search with branchable runner")
+struct WhisperDecoderBeamSearchBranchableTests {
+
+    private let vocabSize = 50_400
+
+    @Test("Branchable runner path produces the same winner as shared-state path")
+    func branchablePathMatchesSharedState() async throws {
+        let tokenizer = makeTokenizer()
+        var options = DecodingOptions.default
+        options.language = nil
+        options.suppressBlank = false
+        options.beamSize = 2
+
+        let promptTail = tokenizer.noTimestampsToken
+        var firstStep = oneHotLogits(vocabSize: vocabSize, hot: 0, value: -10)
+        firstStep[100] = 5
+        firstStep[200] = 4
+        var continueA = oneHotLogits(vocabSize: vocabSize, hot: 0, value: -10)
+        continueA[tokenizer.endOfTextToken] = 8
+        var continueB = oneHotLogits(vocabSize: vocabSize, hot: 0, value: -10)
+        continueB[tokenizer.endOfTextToken] = 6
+
+        let table: BranchableMockRunner.ScoreTable = [
+            promptTail: firstStep,
+            100: continueA,
+            200: continueB,
+        ]
+        let runner = BranchableMockRunner(
+            scoreTable: table,
+            defaultLogits: oneHotLogits(vocabSize: vocabSize, hot: tokenizer.endOfTextToken)
+        )
+        let decoder = WhisperDecoder(branchableRunner: runner, tokenizer: tokenizer)
+        let encoder = try makeEncoderArray()
+
+        let result = try await decoder.decode(encoderOutput: encoder, options: options)
+        #expect(result.first?.id == 100)
+    }
+
+    @Test("Branch is invoked at least once when two beams share a parent")
+    func branchInvokedWhenSharingParent() async throws {
+        let tokenizer = makeTokenizer()
+        var options = DecodingOptions.default
+        options.language = nil
+        options.suppressBlank = false
+        options.beamSize = 2
+
+        // Single-source first step where both beam continuations come from
+        // the same parent runner.
+        var fanOut = oneHotLogits(vocabSize: vocabSize, hot: 0, value: -10)
+        fanOut[100] = 5
+        fanOut[200] = 4
+        var continueA = oneHotLogits(vocabSize: vocabSize, hot: 0, value: -10)
+        continueA[tokenizer.endOfTextToken] = 8
+        var continueB = oneHotLogits(vocabSize: vocabSize, hot: 0, value: -10)
+        continueB[tokenizer.endOfTextToken] = 6
+
+        let table: BranchableMockRunner.ScoreTable = [
+            tokenizer.noTimestampsToken: fanOut,
+            100: continueA,
+            200: continueB,
+        ]
+        let runner = BranchableMockRunner(
+            scoreTable: table,
+            defaultLogits: oneHotLogits(vocabSize: vocabSize, hot: tokenizer.endOfTextToken)
+        )
+        let decoder = WhisperDecoder(branchableRunner: runner, tokenizer: tokenizer)
+        let encoder = try makeEncoderArray()
+
+        _ = try await decoder.decode(encoderOutput: encoder, options: options)
+        #expect(runner.branchCount >= 1)
+    }
+
+    @Test("beamSize=1 + branchable runner falls through to greedy path")
+    func branchableSizeOneIsGreedy() async throws {
+        let tokenizer = makeTokenizer()
+        var options = DecodingOptions.default
+        options.language = nil
+        options.suppressBlank = false
+        options.beamSize = 1
+        options.temperatureFallback = [0.0]
+
+        let runner = BranchableMockRunner(
+            scoreTable: [:],
+            defaultLogits: oneHotLogits(vocabSize: vocabSize, hot: tokenizer.endOfTextToken)
+        )
+        let decoder = WhisperDecoder(branchableRunner: runner, tokenizer: tokenizer)
+        let encoder = try makeEncoderArray()
+
+        _ = try await decoder.decode(encoderOutput: encoder, options: options)
+        #expect(runner.branchCount == 0)
+    }
+}
