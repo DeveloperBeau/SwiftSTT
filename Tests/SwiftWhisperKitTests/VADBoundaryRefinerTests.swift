@@ -1,7 +1,8 @@
 import Foundation
-import Testing
-@testable import SwiftWhisperKit
 import SwiftWhisperCore
+import Testing
+
+@testable import SwiftWhisperKit
 
 @Suite("VADBoundaryRefiner")
 struct VADBoundaryRefinerTests {
@@ -40,8 +41,8 @@ struct VADBoundaryRefinerTests {
     func singleSpeechFrameSuppressed() async {
         let refiner = VADBoundaryRefiner(startConsecutive: 3, endConsecutive: 3)
         _ = await refiner.ingest(isSpeech: false, sampleCount: Self.frameSamples)
-        _ = await refiner.ingest(isSpeech: true, sampleCount: Self.frameSamples) // start of pending
-        _ = await refiner.ingest(isSpeech: false, sampleCount: Self.frameSamples) // resets streak
+        _ = await refiner.ingest(isSpeech: true, sampleCount: Self.frameSamples)  // start of pending
+        _ = await refiner.ingest(isSpeech: false, sampleCount: Self.frameSamples)  // resets streak
         _ = await refiner.ingest(isSpeech: false, sampleCount: Self.frameSamples)
         // No boundary should ever be emitted because we never reached startConsecutive speech in a row.
         let result = await refiner.flush()

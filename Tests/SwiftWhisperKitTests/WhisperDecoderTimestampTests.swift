@@ -1,7 +1,8 @@
 import Foundation
-import Testing
-@testable import SwiftWhisperKit
 import SwiftWhisperCore
+import Testing
+
+@testable import SwiftWhisperKit
 
 private func makeTimestampSpecials() -> [String: Int] {
     var specials: [String: Int] = [
@@ -32,7 +33,8 @@ struct WhisperDecoderTimestampTests {
     @Test("Empty input returns empty array")
     func parseSegmentsEmpty() {
         let tokenizer = tokenizerWithTimestamps()
-        let result = WhisperDecoder.parseSegments(tokens: [], tokenizer: tokenizer, windowOffsetSeconds: 0)
+        let result = WhisperDecoder.parseSegments(
+            tokens: [], tokenizer: tokenizer, windowOffsetSeconds: 0)
         #expect(result.isEmpty)
     }
 
@@ -47,7 +49,8 @@ struct WhisperDecoderTimestampTests {
             WhisperToken(id: 5_001, text: " world"),
             WhisperToken(id: endTimestamp, text: ""),
         ]
-        let result = WhisperDecoder.parseSegments(tokens: tokens, tokenizer: tokenizer, windowOffsetSeconds: 0)
+        let result = WhisperDecoder.parseSegments(
+            tokens: tokens, tokenizer: tokenizer, windowOffsetSeconds: 0)
         #expect(result.count == 1)
         #expect(result[0].start == 0)
         #expect(abs(result[0].end - 1.0) < 0.0001)
@@ -64,7 +67,8 @@ struct WhisperDecoderTimestampTests {
             WhisperToken(id: 5_001, text: " b"),
             WhisperToken(id: 50_464, text: ""),
         ]
-        let result = WhisperDecoder.parseSegments(tokens: tokens, tokenizer: tokenizer, windowOffsetSeconds: 0)
+        let result = WhisperDecoder.parseSegments(
+            tokens: tokens, tokenizer: tokenizer, windowOffsetSeconds: 0)
         #expect(result.count == 2)
         #expect(abs(result[0].start - 0.0) < 0.0001)
         #expect(abs(result[0].end - 1.0) < 0.0001)
@@ -82,7 +86,8 @@ struct WhisperDecoderTimestampTests {
             WhisperToken(id: 50_500, text: ""),
             WhisperToken(id: 5_001, text: " trailing"),
         ]
-        let result = WhisperDecoder.parseSegments(tokens: tokens, tokenizer: tokenizer, windowOffsetSeconds: 0)
+        let result = WhisperDecoder.parseSegments(
+            tokens: tokens, tokenizer: tokenizer, windowOffsetSeconds: 0)
         #expect(result.count == 1)
         #expect(result[0].start == 0)
     }
@@ -95,7 +100,8 @@ struct WhisperDecoderTimestampTests {
             WhisperToken(id: 5_000, text: " text"),
             WhisperToken(id: 50_414, text: ""),
         ]
-        let result = WhisperDecoder.parseSegments(tokens: tokens, tokenizer: tokenizer, windowOffsetSeconds: 30)
+        let result = WhisperDecoder.parseSegments(
+            tokens: tokens, tokenizer: tokenizer, windowOffsetSeconds: 30)
         #expect(result.count == 1)
         #expect(abs(result[0].start - 30.0) < 0.0001)
         #expect(abs(result[0].end - 31.0) < 0.0001)
@@ -111,7 +117,8 @@ struct WhisperDecoderTimestampTests {
             WhisperToken(id: 5_000, text: " body"),
             WhisperToken(id: 50_414, text: ""),
         ]
-        let result = WhisperDecoder.parseSegments(tokens: tokens, tokenizer: tokenizer, windowOffsetSeconds: 0)
+        let result = WhisperDecoder.parseSegments(
+            tokens: tokens, tokenizer: tokenizer, windowOffsetSeconds: 0)
         #expect(result.count == 1)
         #expect(!result[0].text.contains("<|"))
     }
@@ -125,7 +132,8 @@ struct WhisperDecoderTimestampTests {
             WhisperToken(id: 5_001, text: " kept"),
             WhisperToken(id: 50_414, text: ""),
         ]
-        let result = WhisperDecoder.parseSegments(tokens: tokens, tokenizer: tokenizer, windowOffsetSeconds: 0)
+        let result = WhisperDecoder.parseSegments(
+            tokens: tokens, tokenizer: tokenizer, windowOffsetSeconds: 0)
         #expect(result.count == 1)
     }
 
@@ -138,7 +146,8 @@ struct WhisperDecoderTimestampTests {
             WhisperToken(id: 5_000, text: " text"),
             WhisperToken(id: 50_414, text: ""),
         ]
-        let result = WhisperDecoder.parseSegments(tokens: tokens, tokenizer: tokenizer, windowOffsetSeconds: 0)
+        let result = WhisperDecoder.parseSegments(
+            tokens: tokens, tokenizer: tokenizer, windowOffsetSeconds: 0)
         #expect(result.count == 1)
         #expect(!result[0].text.contains("<|startoftranscript|>"))
     }

@@ -1,7 +1,8 @@
 import Foundation
-import Testing
-@testable import SwiftWhisperKit
 import SwiftWhisperCore
+import Testing
+
+@testable import SwiftWhisperKit
 
 // MARK: - URLProtocol that streams data in chunks so we can observe progress callbacks
 
@@ -64,10 +65,13 @@ struct ModelDownloadDelegateTests {
         let task = session.downloadTask(with: URL(string: "https://example.com/file.bin")!)
 
         let (stream, continuation) = AsyncThrowingStream<DownloadProgress, any Error>.makeStream()
-        delegate.register(taskIdentifier: task.taskIdentifier, handle: .init(
-            continuation: continuation,
-            destination: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        ))
+        delegate.register(
+            taskIdentifier: task.taskIdentifier,
+            handle: .init(
+                continuation: continuation,
+                destination: FileManager.default.temporaryDirectory.appendingPathComponent(
+                    UUID().uuidString)
+            ))
 
         delegate.urlSession(
             session,
@@ -95,7 +99,8 @@ struct ModelDownloadDelegateTests {
         defer { session.invalidateAndCancel() }
         let task = session.downloadTask(with: URL(string: "https://example.com/file.bin")!)
 
-        let temp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".bin")
+        let temp = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString + ".bin")
         try Data("payload".utf8).write(to: temp)
 
         let dest = FileManager.default.temporaryDirectory
@@ -104,13 +109,15 @@ struct ModelDownloadDelegateTests {
 
         let (stream, continuation) = AsyncThrowingStream<DownloadProgress, any Error>.makeStream()
         let finishedExpectation = ExpectationBox()
-        delegate.register(taskIdentifier: task.taskIdentifier, handle: .init(
-            continuation: continuation,
-            destination: dest,
-            finished: { result in
-                finishedExpectation.set(result)
-            }
-        ))
+        delegate.register(
+            taskIdentifier: task.taskIdentifier,
+            handle: .init(
+                continuation: continuation,
+                destination: dest,
+                finished: { result in
+                    finishedExpectation.set(result)
+                }
+            ))
 
         delegate.urlSession(session, downloadTask: task, didFinishDownloadingTo: temp)
         delegate.urlSession(session, task: task, didCompleteWithError: nil)
@@ -138,11 +145,14 @@ struct ModelDownloadDelegateTests {
 
         let (stream, continuation) = AsyncThrowingStream<DownloadProgress, any Error>.makeStream()
         let finishedBox = ExpectationBox()
-        delegate.register(taskIdentifier: task.taskIdentifier, handle: .init(
-            continuation: continuation,
-            destination: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),
-            finished: { finishedBox.set($0) }
-        ))
+        delegate.register(
+            taskIdentifier: task.taskIdentifier,
+            handle: .init(
+                continuation: continuation,
+                destination: FileManager.default.temporaryDirectory.appendingPathComponent(
+                    UUID().uuidString),
+                finished: { finishedBox.set($0) }
+            ))
 
         let error = NSError(domain: "Test", code: 42)
         delegate.urlSession(session, task: task, didCompleteWithError: error)
@@ -153,7 +163,8 @@ struct ModelDownloadDelegateTests {
         } catch let nserror as NSError {
             #expect(nserror.code == 42)
         }
-        if case .failure = finishedBox.value {} else {
+        if case .failure = finishedBox.value {
+        } else {
             Issue.record("expected failure result")
         }
     }
@@ -166,10 +177,13 @@ struct ModelDownloadDelegateTests {
         let task = session.downloadTask(with: URL(string: "https://example.com/file.bin")!)
 
         let (stream, continuation) = AsyncThrowingStream<DownloadProgress, any Error>.makeStream()
-        delegate.register(taskIdentifier: task.taskIdentifier, handle: .init(
-            continuation: continuation,
-            destination: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        ))
+        delegate.register(
+            taskIdentifier: task.taskIdentifier,
+            handle: .init(
+                continuation: continuation,
+                destination: FileManager.default.temporaryDirectory.appendingPathComponent(
+                    UUID().uuidString)
+            ))
 
         delegate.urlSession(
             session,
@@ -196,17 +210,27 @@ struct ModelDownloadDelegateTests {
 
         let (streamA, contA) = AsyncThrowingStream<DownloadProgress, any Error>.makeStream()
         let (streamB, contB) = AsyncThrowingStream<DownloadProgress, any Error>.makeStream()
-        delegate.register(taskIdentifier: taskA.taskIdentifier, handle: .init(
-            continuation: contA,
-            destination: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        ))
-        delegate.register(taskIdentifier: taskB.taskIdentifier, handle: .init(
-            continuation: contB,
-            destination: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        ))
+        delegate.register(
+            taskIdentifier: taskA.taskIdentifier,
+            handle: .init(
+                continuation: contA,
+                destination: FileManager.default.temporaryDirectory.appendingPathComponent(
+                    UUID().uuidString)
+            ))
+        delegate.register(
+            taskIdentifier: taskB.taskIdentifier,
+            handle: .init(
+                continuation: contB,
+                destination: FileManager.default.temporaryDirectory.appendingPathComponent(
+                    UUID().uuidString)
+            ))
 
-        delegate.urlSession(session, downloadTask: taskA, didWriteData: 10, totalBytesWritten: 10, totalBytesExpectedToWrite: 100)
-        delegate.urlSession(session, downloadTask: taskB, didWriteData: 50, totalBytesWritten: 50, totalBytesExpectedToWrite: 100)
+        delegate.urlSession(
+            session, downloadTask: taskA, didWriteData: 10, totalBytesWritten: 10,
+            totalBytesExpectedToWrite: 100)
+        delegate.urlSession(
+            session, downloadTask: taskB, didWriteData: 50, totalBytesWritten: 50,
+            totalBytesExpectedToWrite: 100)
         contA.finish()
         contB.finish()
 

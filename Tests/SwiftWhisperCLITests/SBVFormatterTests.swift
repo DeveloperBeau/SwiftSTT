@@ -1,7 +1,8 @@
 import Foundation
-import Testing
-@testable import SwiftWhisperCLI
 import SwiftWhisperCore
+import Testing
+
+@testable import SwiftWhisperCLI
 
 @Suite("SBVFormatter")
 struct SBVFormatterTests {
@@ -29,7 +30,8 @@ struct SBVFormatterTests {
         let formatter = SBVFormatter()
         let s1 = TranscriptionSegment(text: "one", start: 0, end: 1)
         let s2 = TranscriptionSegment(text: "two", start: 1, end: 2)
-        let combined = formatter.format(segment: s1, index: 0)
+        let combined =
+            formatter.format(segment: s1, index: 0)
             + "\n"
             + formatter.format(segment: s2, index: 1)
         #expect(combined.contains("one\n\n0:00:01.000,0:00:02.000"))

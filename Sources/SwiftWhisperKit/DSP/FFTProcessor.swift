@@ -40,7 +40,7 @@ public struct FFTProcessor {
     public static let fftSize: Int = 512
 
     /// Number of unique output bins. `fftSize/2 + 1`.
-    public static let outputBins: Int = fftSize / 2 + 1   // 257
+    public static let outputBins: Int = fftSize / 2 + 1  // 257
 
     private let dft: vDSP.DiscreteFourierTransform<Float>
     private let window: [Float]
@@ -115,4 +115,3 @@ public struct FFTProcessor {
         return power
     }
 }
-

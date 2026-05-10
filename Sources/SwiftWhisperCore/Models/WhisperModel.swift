@@ -20,7 +20,7 @@ public enum WhisperModel: String, CaseIterable, Sendable, Identifiable {
     case tiny
     case base
     case small
-    case largeV3Turbo // openai_whisper-large-v3-turbo
+    case largeV3Turbo  // openai_whisper-large-v3-turbo
 
     public var id: String { rawValue }
 

@@ -1,7 +1,7 @@
 @preconcurrency import AVFoundation
 import Foundation
-import Synchronization
 import SwiftWhisperCore
+import Synchronization
 
 /// Production ``AudioInputProvider`` backed by `AVAudioEngine`.
 ///
@@ -83,7 +83,9 @@ public actor AVMicrophoneInput: AudioInputProvider {
             bufferSize: bufferSize,
             format: inputFormat
         ) { @Sendable buffer, _ in
-            guard let samples = box.convert(buffer: buffer, sourceRate: inputRate, targetRate: target) else { return }
+            guard
+                let samples = box.convert(buffer: buffer, sourceRate: inputRate, targetRate: target)
+            else { return }
             onChunk(samples)
         }
         box.tapInstalled = true
@@ -175,7 +177,8 @@ private final class CaptureBox: @unchecked Sendable {
         guard let converter, let outputFormat else { return nil }
         let ratio = targetRate / sourceRate
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio + 32)
-        guard let outBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: capacity) else {
+        guard let outBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: capacity)
+        else {
             return nil
         }
 

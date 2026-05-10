@@ -1,4 +1,5 @@
 import Testing
+
 @testable import SwiftWhisperCore
 
 @Suite("WhisperModel")
@@ -28,7 +29,8 @@ struct WhisperModelTests {
         for model in WhisperModel.allCases {
             #expect(model.approximateSizeBytes > 100_000_000)
         }
-        #expect(WhisperModel.tiny.approximateSizeBytes < WhisperModel.largeV3Turbo.approximateSizeBytes)
+        #expect(
+            WhisperModel.tiny.approximateSizeBytes < WhisperModel.largeV3Turbo.approximateSizeBytes)
     }
 
     @Test("Display names are non-empty")

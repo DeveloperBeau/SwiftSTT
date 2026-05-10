@@ -18,7 +18,7 @@ import SwiftWhisperCore
 public struct WhisperTokenizer: Sendable {
 
     private let bpe: BPETokenizer
-    private let specialTokens: [String: Int]   // content -> id
+    private let specialTokens: [String: Int]  // content -> id
     private let reverseSpecial: [Int: String]  // id -> content
     private let timestampPrefix = "<|"
     private let timestampSuffix = "|>"
@@ -48,7 +48,8 @@ public struct WhisperTokenizer: Sendable {
         self.noTimestampsToken = specialTokens["<|notimestamps|>"] ?? 50_363
         self.transcribeToken = specialTokens["<|transcribe|>"] ?? 50_359
         self.translateToken = specialTokens["<|translate|>"] ?? 50_358
-        self.noSpeechToken = specialTokens["<|nospeech|>"] ?? specialTokens["<|nocaptions|>"] ?? 50_362
+        self.noSpeechToken =
+            specialTokens["<|nospeech|>"] ?? specialTokens["<|nocaptions|>"] ?? 50_362
     }
 
     /// Loads a tokenizer from a HuggingFace `tokenizer.json` file on disk.

@@ -28,22 +28,31 @@ struct TranscribeMicCommand: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "Model to use (default: base).")
     var model: WhisperModel = .base
 
-    @Option(name: .shortAndLong, help: "ISO-639-1 language code, e.g. 'en'. Auto-detect when omitted.")
+    @Option(
+        name: .shortAndLong, help: "ISO-639-1 language code, e.g. 'en'. Auto-detect when omitted.")
     var language: String?
 
-    @Option(name: .shortAndLong, help: "Output format: text, srt, vtt, json, ndjson, ttml, sbv (default: text).")
+    @Option(
+        name: .shortAndLong,
+        help: "Output format: text, srt, vtt, json, ndjson, ttml, sbv (default: text).")
     var format: OutputFormat = .text
 
     @Option(name: .long, help: "Stop after this many seconds. Unbounded when omitted.")
     var maxDuration: Double?
 
-    @Option(name: [.short, .long], help: "Write transcript to <path> instead of stdout. Tilde paths are expanded.")
+    @Option(
+        name: [.short, .long],
+        help: "Write transcript to <path> instead of stdout. Tilde paths are expanded.")
     var output: String?
 
     @Flag(name: .long, help: "Refuse to overwrite an existing --output file.")
     var noClobber: Bool = false
 
-    @Option(name: .long, help: "Override the model cache directory. Honors SWIFTWHISPER_CACHE_DIR; default ~/Library/Application Support/SwiftWhisper/Models.")
+    @Option(
+        name: .long,
+        help:
+            "Override the model cache directory. Honors SWIFTWHISPER_CACHE_DIR; default ~/Library/Application Support/SwiftWhisper/Models."
+    )
     var cacheDir: String?
 
     func run() async throws {

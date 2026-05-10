@@ -1,7 +1,8 @@
 import Foundation
-import Testing
-@testable import SwiftWhisperKit
 import SwiftWhisperCore
+import Testing
+
+@testable import SwiftWhisperKit
 
 // MARK: - Mock provider
 
@@ -84,11 +85,12 @@ struct AVAudioCaptureTests {
 
     @Test("Start delivers chunks from the provider into the stream")
     func startDeliversChunks() async throws {
-        let mock = MockAudioInput(.deliver([
-            [0.1, 0.2, 0.3],
-            [0.4, 0.5],
-            [0.6],
-        ]))
+        let mock = MockAudioInput(
+            .deliver([
+                [0.1, 0.2, 0.3],
+                [0.4, 0.5],
+                [0.6],
+            ]))
         let capture = AVAudioCapture(provider: mock, targetSampleRate: 16_000)
 
         try await capture.startCapture()
@@ -198,11 +200,12 @@ struct AVAudioCaptureTests {
 
     @Test("Timestamps are monotonic across chunks")
     func monotonicTimestamps() async throws {
-        let mock = MockAudioInput(.deliver([
-            [0.0],
-            [0.0],
-            [0.0],
-        ]))
+        let mock = MockAudioInput(
+            .deliver([
+                [0.0],
+                [0.0],
+                [0.0],
+            ]))
         let capture = AVAudioCapture(provider: mock)
         try await capture.startCapture()
         let chunks = await Self.collect(capture, count: 3)

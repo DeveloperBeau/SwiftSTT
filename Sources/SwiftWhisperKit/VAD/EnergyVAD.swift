@@ -95,7 +95,8 @@ public actor EnergyVAD: VoiceActivityDetector {
             return false
         }
 
-        let floorDB: Float = noiseFloorRMS.isEmpty
+        let floorDB: Float =
+            noiseFloorRMS.isEmpty
             ? thresholdDB
             : max(thresholdDB, Self.dB(Self.mean(noiseFloorRMS)) + marginDB)
 

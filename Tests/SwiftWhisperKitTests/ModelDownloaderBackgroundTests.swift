@@ -1,7 +1,8 @@
 import Foundation
-import Testing
-@testable import SwiftWhisperKit
 import SwiftWhisperCore
+import Testing
+
+@testable import SwiftWhisperKit
 
 @Suite("ModelDownloader background mode")
 struct ModelDownloaderBackgroundTests {
@@ -18,7 +19,8 @@ struct ModelDownloaderBackgroundTests {
     func backgroundInitRegistersDelegate() async {
         let identifier = "swiftwhisper.test.\(UUID().uuidString)"
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let downloader = ModelDownloader(cacheDirectory: tmp, mode: .background(identifier: identifier))
+        let downloader = ModelDownloader(
+            cacheDirectory: tmp, mode: .background(identifier: identifier))
         defer { ModelDownloadDelegate.unregister(identifier: identifier) }
 
         #expect(ModelDownloadDelegate.delegate(for: identifier) != nil)
@@ -69,7 +71,8 @@ struct ModelDownloaderBackgroundTests {
     @Test("handleBackgroundEvents for unknown identifier fires completion immediately")
     func handleBackgroundEventsUnknownIdentifier() async {
         let counter = CounterBox()
-        await ModelDownloader.handleBackgroundEvents(identifier: "nonexistent.\(UUID().uuidString)") {
+        await ModelDownloader.handleBackgroundEvents(identifier: "nonexistent.\(UUID().uuidString)")
+        {
             counter.increment()
         }
         #expect(counter.value == 1)

@@ -1,7 +1,8 @@
 import Foundation
-import Testing
-@testable import SwiftWhisperKit
 import SwiftWhisperCore
+import Testing
+
+@testable import SwiftWhisperKit
 
 @Suite("WhisperDecoder logit bias")
 struct WhisperDecoderLogitBiasTests {

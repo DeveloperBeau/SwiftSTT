@@ -1,7 +1,8 @@
 import Foundation
-import Testing
-@testable import SwiftWhisperKit
 import SwiftWhisperCore
+import Testing
+
+@testable import SwiftWhisperKit
 
 // MARK: - Mock URLProtocol
 
@@ -23,13 +24,16 @@ private final class MockURLProtocol: URLProtocol, @unchecked Sendable {
             let url = request.url,
             let (data, code) = Self.handlers[url.path]
         else {
-            let error = NSError(domain: "MockURLProtocol", code: -1, userInfo: [
-                NSLocalizedDescriptionKey: "no handler for \(request.url?.path ?? "nil")"
-            ])
+            let error = NSError(
+                domain: "MockURLProtocol", code: -1,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "no handler for \(request.url?.path ?? "nil")"
+                ])
             client?.urlProtocol(self, didFailWithError: error)
             return
         }
-        let response = HTTPURLResponse(url: url, statusCode: code, httpVersion: nil, headerFields: nil)!
+        let response = HTTPURLResponse(
+            url: url, statusCode: code, httpVersion: nil, headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: data)
         client?.urlProtocolDidFinishLoading(self)
@@ -75,7 +79,8 @@ struct ModelDownloaderTests {
             _ = try await dl.bundle(for: .tiny)
             Issue.record("expected throw")
         } catch let error as SwiftWhisperError {
-            if case .modelFileMissing = error {} else {
+            if case .modelFileMissing = error {
+            } else {
                 Issue.record("wrong error: \(error)")
             }
         }
@@ -94,8 +99,8 @@ struct ModelDownloaderTests {
         MockURLProtocol.reset()
 
         let treeJSON = """
-        [{"type":"file","rfilename":"openai_whisper-tiny/test.bin","size":10}]
-        """
+            [{"type":"file","rfilename":"openai_whisper-tiny/test.bin","size":10}]
+            """
         MockURLProtocol.register(
             path: "/api/models/argmaxinc/whisperkit-coreml/tree/main/openai_whisper-tiny",
             data: Data(treeJSON.utf8)
@@ -112,7 +117,8 @@ struct ModelDownloaderTests {
             _ = try await dl.download(.tiny)
             Issue.record("expected throw on concurrent download")
         } catch let error as SwiftWhisperError {
-            if case .modelDownloadFailed = error {} else {
+            if case .modelDownloadFailed = error {
+            } else {
                 Issue.record("wrong error: \(error)")
             }
         }

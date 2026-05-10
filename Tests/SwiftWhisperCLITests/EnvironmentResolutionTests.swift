@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import SwiftWhisperCLI
 
 @Suite("CacheDirectoryOption environment resolution")

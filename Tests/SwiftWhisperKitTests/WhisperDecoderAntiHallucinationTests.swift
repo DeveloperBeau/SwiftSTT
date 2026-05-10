@@ -1,9 +1,10 @@
 @preconcurrency import CoreML
 import Foundation
+import SwiftWhisperCore
 import Synchronization
 import Testing
+
 @testable import SwiftWhisperKit
-import SwiftWhisperCore
 
 // MARK: - Mock runner
 
@@ -110,7 +111,9 @@ private func makeTokenizer() -> WhisperTokenizer {
     WhisperTokenizer(specialTokens: antiHallucinationSpecials)
 }
 
-private func makeEncoderArray(shape: [Int] = [1, 1500, 16], fill: Float = 0.0) throws -> MLMultiArray {
+private func makeEncoderArray(shape: [Int] = [1, 1500, 16], fill: Float = 0.0) throws
+    -> MLMultiArray
+{
     let array = try MLMultiArray(
         shape: shape.map { NSNumber(value: $0) },
         dataType: .float32
@@ -156,7 +159,8 @@ struct WhisperDecoderAntiHallucinationTests {
 
     @Test("compressionRatio of healthy text stays under threshold")
     func compressionRatioHealthy() {
-        let ratio = WhisperDecoder.compressionRatio(text: "the quick brown fox jumps over the lazy dog")
+        let ratio = WhisperDecoder.compressionRatio(
+            text: "the quick brown fox jumps over the lazy dog")
         #expect(ratio < 2.4)
     }
 
@@ -304,7 +308,8 @@ struct WhisperDecoderAntiHallucinationTests {
             try WhisperDecoder.validate(options: options)
             Issue.record("expected throw")
         } catch let error as SwiftWhisperError {
-            if case .invalidDecodingOption = error {} else {
+            if case .invalidDecodingOption = error {
+            } else {
                 Issue.record("wrong error: \(error)")
             }
         }
@@ -318,7 +323,8 @@ struct WhisperDecoderAntiHallucinationTests {
             try WhisperDecoder.validate(options: options)
             Issue.record("expected throw")
         } catch let error as SwiftWhisperError {
-            if case .invalidDecodingOption = error {} else {
+            if case .invalidDecodingOption = error {
+            } else {
                 Issue.record("wrong error: \(error)")
             }
         }

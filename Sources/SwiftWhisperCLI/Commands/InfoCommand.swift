@@ -20,7 +20,11 @@ struct InfoCommand: AsyncParsableCommand {
     @Argument(help: "Model name (tiny, base, small, largeV3Turbo).")
     var model: WhisperModel
 
-    @Option(name: .long, help: "Override the model cache directory. Defaults to ~/Library/Application Support/SwiftWhisper/Models.")
+    @Option(
+        name: .long,
+        help:
+            "Override the model cache directory. Defaults to ~/Library/Application Support/SwiftWhisper/Models."
+    )
     var cacheDir: String?
 
     func run() async throws {

@@ -1,6 +1,7 @@
 import ArgumentParser
 import Foundation
 import Testing
+
 @testable import SwiftWhisperCLI
 
 @Suite("--cache-dir option")

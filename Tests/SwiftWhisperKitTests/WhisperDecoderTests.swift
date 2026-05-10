@@ -1,9 +1,10 @@
 @preconcurrency import CoreML
 import Foundation
+import SwiftWhisperCore
 import Synchronization
 import Testing
+
 @testable import SwiftWhisperKit
-import SwiftWhisperCore
 
 // MARK: - Mock runner
 
@@ -125,7 +126,9 @@ private func makeTokenizer() -> WhisperTokenizer {
     WhisperTokenizer(specialTokens: defaultSpecials)
 }
 
-private func makeEncoderArray(shape: [Int] = [1, 1500, 16], fill: Float = 0.0) throws -> MLMultiArray {
+private func makeEncoderArray(shape: [Int] = [1, 1500, 16], fill: Float = 0.0) throws
+    -> MLMultiArray
+{
     let array = try MLMultiArray(
         shape: shape.map { NSNumber(value: $0) },
         dataType: .float32
@@ -144,7 +147,9 @@ private func oneHotLogits(vocabSize: Int, hot: Int, value: Float = 10) -> [Float
     return out
 }
 
-private func makeLogitsProvider(values: [Float], name: String = "logits") throws -> any MLFeatureProvider {
+private func makeLogitsProvider(values: [Float], name: String = "logits") throws
+    -> any MLFeatureProvider
+{
     let array = try MLMultiArray(
         shape: [1, 1, NSNumber(value: values.count)],
         dataType: .float32
@@ -205,12 +210,13 @@ struct WhisperDecoderTests {
         // plus 1 generation call that produces EOT.
         #expect(runner.calls.count == 5)
         let firstFour = runner.calls.prefix(4).map(\.tokenId)
-        #expect(firstFour == [
-            Int32(tokenizer.startOfTranscriptToken),
-            Int32(50_259),  // <|en|>
-            Int32(tokenizer.transcribeToken),
-            Int32(tokenizer.noTimestampsToken),
-        ])
+        #expect(
+            firstFour == [
+                Int32(tokenizer.startOfTranscriptToken),
+                Int32(50_259),  // <|en|>
+                Int32(tokenizer.transcribeToken),
+                Int32(tokenizer.noTimestampsToken),
+            ])
     }
 
     @Test("Generation stops when end-of-text logit wins")
@@ -380,12 +386,13 @@ struct WhisperDecoderTests {
         options.language = "en"
         options.task = .transcribe
         let prompt = WhisperDecoder.initialPromptTokens(options: options, tokenizer: tokenizer)
-        #expect(prompt == [
-            tokenizer.startOfTranscriptToken,
-            50_259,
-            tokenizer.transcribeToken,
-            tokenizer.noTimestampsToken,
-        ])
+        #expect(
+            prompt == [
+                tokenizer.startOfTranscriptToken,
+                50_259,
+                tokenizer.transcribeToken,
+                tokenizer.noTimestampsToken,
+            ])
     }
 
     @Test("initialPromptTokens swaps task token for translate")
@@ -394,12 +401,14 @@ struct WhisperDecoderTests {
         var transcribe = DecodingOptions.default
         transcribe.language = "de"
         transcribe.task = .transcribe
-        let transcribePrompt = WhisperDecoder.initialPromptTokens(options: transcribe, tokenizer: tokenizer)
+        let transcribePrompt = WhisperDecoder.initialPromptTokens(
+            options: transcribe, tokenizer: tokenizer)
 
         var translate = DecodingOptions.default
         translate.language = "de"
         translate.task = .translate
-        let translatePrompt = WhisperDecoder.initialPromptTokens(options: translate, tokenizer: tokenizer)
+        let translatePrompt = WhisperDecoder.initialPromptTokens(
+            options: translate, tokenizer: tokenizer)
 
         #expect(transcribePrompt.contains(tokenizer.transcribeToken))
         #expect(!transcribePrompt.contains(tokenizer.translateToken))
@@ -413,11 +422,12 @@ struct WhisperDecoderTests {
         var options = DecodingOptions.default
         options.language = nil
         let prompt = WhisperDecoder.initialPromptTokens(options: options, tokenizer: tokenizer)
-        #expect(prompt == [
-            tokenizer.startOfTranscriptToken,
-            tokenizer.transcribeToken,
-            tokenizer.noTimestampsToken,
-        ])
+        #expect(
+            prompt == [
+                tokenizer.startOfTranscriptToken,
+                tokenizer.transcribeToken,
+                tokenizer.noTimestampsToken,
+            ])
     }
 
     @Test("initialPromptTokens silently skips an unknown language tag")
@@ -446,7 +456,8 @@ struct WhisperDecoderTests {
             _ = try WhisperDecoder.extractLogits(from: provider, name: "logits")
             Issue.record("expected throw")
         } catch let error as SwiftWhisperError {
-            if case .decoderFailure = error {} else {
+            if case .decoderFailure = error {
+            } else {
                 Issue.record("wrong error: \(error)")
             }
         }
@@ -455,13 +466,14 @@ struct WhisperDecoderTests {
     @Test("extractLogits throws when feature is not multiarray")
     func extractLogitsThrowsOnWrongType() throws {
         let provider = try MLDictionaryFeatureProvider(dictionary: [
-            "logits": MLFeatureValue(string: "not an array"),
+            "logits": MLFeatureValue(string: "not an array")
         ])
         do {
             _ = try WhisperDecoder.extractLogits(from: provider, name: "logits")
             Issue.record("expected throw")
         } catch let error as SwiftWhisperError {
-            if case .decoderFailure = error {} else {
+            if case .decoderFailure = error {
+            } else {
                 Issue.record("wrong error: \(error)")
             }
         }
@@ -482,7 +494,8 @@ struct WhisperDecoderTests {
         #expect(provider.featureNames.contains("decoder_input_ids"))
         #expect(provider.featureNames.contains("cache_length"))
 
-        let tokenArray = try #require(provider.featureValue(for: "decoder_input_ids")?.multiArrayValue)
+        let tokenArray = try #require(
+            provider.featureValue(for: "decoder_input_ids")?.multiArrayValue)
         #expect(tokenArray.shape == [1, 1])
         #expect(tokenArray[[0, 0] as [NSNumber]].int32Value == 1234)
 
@@ -490,7 +503,8 @@ struct WhisperDecoderTests {
         #expect(cacheArray.shape == [1])
         #expect(cacheArray[[0] as [NSNumber]].int32Value == 7)
 
-        let embeds = try #require(provider.featureValue(for: "encoder_output_embeds")?.multiArrayValue)
+        let embeds = try #require(
+            provider.featureValue(for: "encoder_output_embeds")?.multiArrayValue)
         #expect(embeds.shape == [1, 1500, 16])
     }
 

@@ -35,10 +35,11 @@ public struct TokenizerJSON: Decodable, Sendable {
                 let str = try String(from: decoder)
                 let parts = str.split(separator: " ", maxSplits: 1).map(String.init)
                 guard parts.count == 2 else {
-                    throw DecodingError.dataCorrupted(.init(
-                        codingPath: decoder.codingPath,
-                        debugDescription: "merge entry not parseable: \(str)"
-                    ))
+                    throw DecodingError.dataCorrupted(
+                        .init(
+                            codingPath: decoder.codingPath,
+                            debugDescription: "merge entry not parseable: \(str)"
+                        ))
                 }
                 self.first = parts[0]
                 self.second = parts[1]

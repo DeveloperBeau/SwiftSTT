@@ -1,6 +1,6 @@
 import Foundation
-import Synchronization
 import SwiftWhisperCore
+import Synchronization
 
 /// Bridges `URLSessionDownloadDelegate` callbacks into per-task
 /// `AsyncThrowingStream` continuations. URLSession invokes delegate methods
@@ -120,11 +120,12 @@ final class ModelDownloadDelegate: NSObject, URLSessionDownloadDelegate, @unchec
                 withIntermediateDirectories: true
             )
             try fileManager.moveItem(at: location, to: handle.destination)
-            handle.continuation.yield(DownloadProgress(
-                totalFiles: 1, completedFiles: 1,
-                totalBytes: 0, totalBytesDownloaded: 0,
-                phase: .complete
-            ))
+            handle.continuation.yield(
+                DownloadProgress(
+                    totalFiles: 1, completedFiles: 1,
+                    totalBytes: 0, totalBytesDownloaded: 0,
+                    phase: .complete
+                ))
             handle.finished?(.success(handle.destination))
         } catch {
             handle.continuation.finish(throwing: error)
@@ -158,10 +159,11 @@ final class ModelDownloadDelegate: NSObject, URLSessionDownloadDelegate, @unchec
         guard let handle = handle(for: taskId) else { return }
         let totalBytes = max(expected, 0)
         let downloaded = min(written, totalBytes == 0 ? written : totalBytes)
-        handle.continuation.yield(DownloadProgress(
-            totalFiles: 1, completedFiles: 0,
-            totalBytes: totalBytes, totalBytesDownloaded: downloaded,
-            phase: .downloading
-        ))
+        handle.continuation.yield(
+            DownloadProgress(
+                totalFiles: 1, completedFiles: 0,
+                totalBytes: totalBytes, totalBytesDownloaded: downloaded,
+                phase: .downloading
+            ))
     }
 }

@@ -1,0 +1,102 @@
+name: Bug report
+description: Report something that isn't behaving as documented.
+title: "[bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a report. Please fill in the fields
+        below so the maintainer can reproduce the issue.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences describing what went wrong.
+      placeholder: "Calling X with Y throws Z, but the docs say it should ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Minimal steps or a code snippet that triggers the bug.
+      render: swift
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: Include error messages, logs, or stack traces verbatim.
+    validations:
+      required: true
+
+  - type: input
+    id: package-version
+    attributes:
+      label: SwiftWhisper version
+      description: Tag, commit hash, or branch you tested against.
+      placeholder: "v0.1.0 / commit abc1234"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS
+        - iOS
+        - iOS Simulator
+        - Mac Catalyst
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: os-version
+    attributes:
+      label: OS version
+      placeholder: "macOS 15.4 / iOS 18.4"
+    validations:
+      required: true
+
+  - type: input
+    id: xcode
+    attributes:
+      label: Xcode and Swift version
+      placeholder: "Xcode 16.4, Swift 6.3"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: model
+    attributes:
+      label: Whisper model
+      options:
+        - tiny
+        - base
+        - small
+        - medium
+        - largeV3Turbo
+        - other
+        - not applicable
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Audio file specs, log excerpts, screenshots, anything else.

@@ -1,7 +1,8 @@
 import Foundation
-import Testing
-@testable import SwiftWhisperKit
 import SwiftWhisperCore
+import Testing
+
+@testable import SwiftWhisperKit
 
 @Suite("EnergyVAD")
 struct EnergyVADTests {
@@ -12,7 +13,10 @@ struct EnergyVADTests {
         AudioChunk(samples: Array(repeating: 0, count: samples), timestamp: 0)
     }
 
-    static func tone(frequency: Float = 440, amplitude: Float = 0.5, samples: Int = 1024, sampleRate: Int = 16_000) -> AudioChunk {
+    static func tone(
+        frequency: Float = 440, amplitude: Float = 0.5, samples: Int = 1024,
+        sampleRate: Int = 16_000
+    ) -> AudioChunk {
         var buf = [Float](repeating: 0, count: samples)
         for i in 0..<samples {
             buf[i] = amplitude * sinf(2 * .pi * frequency * Float(i) / Float(sampleRate))
@@ -101,7 +105,9 @@ struct EnergyVADTests {
 
     @Test("Adaptive threshold doesn't latch on continuous quiet noise")
     func adaptiveThresholdAdjusts() async {
-        let vad = EnergyVAD(thresholdDB: -60.0, marginDB: 6.0, hysteresisFrames: 3, noiseWindow: 10, warmupFrames: 10)
+        let vad = EnergyVAD(
+            thresholdDB: -60.0, marginDB: 6.0, hysteresisFrames: 3, noiseWindow: 10,
+            warmupFrames: 10)
 
         // Warmup seeds noise floor with quiet audio.
         for _ in 0..<15 {
@@ -131,7 +137,7 @@ struct EnergyVADTests {
     @Test("dB conversion handles zero safely")
     func dbZeroSafe() {
         let result = EnergyVAD.dB(0)
-        #expect(result < -100) // Should be clamped, not -infinity.
+        #expect(result < -100)  // Should be clamped, not -infinity.
         #expect(result.isFinite)
     }
 }

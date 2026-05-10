@@ -1,9 +1,10 @@
 @preconcurrency import CoreML
 import Foundation
+import SwiftWhisperCore
 import Synchronization
 import Testing
+
 @testable import SwiftWhisperKit
-import SwiftWhisperCore
 
 // MARK: - Mock audio input
 
@@ -100,7 +101,7 @@ private final class MockRunner: CoreMLModelRunner, @unchecked Sendable {
         case .returnArray(let array):
             do {
                 return try MLDictionaryFeatureProvider(dictionary: [
-                    WhisperEncoder.outputFeatureName: array,
+                    WhisperEncoder.outputFeatureName: array
                 ])
             } catch {
                 throw .decoderFailure("mock provider: \(error.localizedDescription)")
@@ -138,11 +139,12 @@ private final class ResettableMockStatefulRunner: StatefulCoreMLModelRunner, @un
         self.generationLogits = generationLogits
         self.defaultLogits = defaultLogits
         self.logitsName = logitsName
-        self.state = Mutex(State(
-            resetCount: 0,
-            remainingPrefill: prefillCount,
-            generationQueue: generationLogits
-        ))
+        self.state = Mutex(
+            State(
+                resetCount: 0,
+                remainingPrefill: prefillCount,
+                generationQueue: generationLogits
+            ))
     }
 
     var resetCount: Int { state.withLock { $0.resetCount } }

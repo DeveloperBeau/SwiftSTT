@@ -1,7 +1,8 @@
 import Foundation
-import Testing
-@testable import SwiftWhisperCLI
 import SwiftWhisperCore
+import Testing
+
+@testable import SwiftWhisperCLI
 
 @Suite("SegmentFormatter")
 struct SegmentFormatterTests {
@@ -81,7 +82,8 @@ struct SegmentFormatterTests {
         let formatter = VTTFormatter()
         let s1 = TranscriptionSegment(text: "one", start: 0, end: 1)
         let s2 = TranscriptionSegment(text: "two", start: 1, end: 2)
-        let combined = formatter.format(segment: s1, index: 0) + "\n" + formatter.format(segment: s2, index: 1)
+        let combined =
+            formatter.format(segment: s1, index: 0) + "\n" + formatter.format(segment: s2, index: 1)
         #expect(combined.contains("one\n\n00:00:01.000"))
     }
 
@@ -100,7 +102,8 @@ struct SegmentFormatterTests {
         let formatter = JSONFormatter()
         let segments = [
             TranscriptionSegment(text: "And so my fellow Americans", start: 0.0, end: 4.5),
-            TranscriptionSegment(text: "ask not what your country can do for you", start: 4.5, end: 9.0),
+            TranscriptionSegment(
+                text: "ask not what your country can do for you", start: 4.5, end: 9.0),
         ]
         let output = try #require(formatter.footer(segments: segments))
         let data = try #require(output.data(using: .utf8))
@@ -196,8 +199,8 @@ struct SegmentFormatterTests {
     }
 }
 
-private extension Double {
-    func isApproximately(_ other: Double, tolerance: Double = 0.001) -> Bool {
+extension Double {
+    fileprivate func isApproximately(_ other: Double, tolerance: Double = 0.001) -> Bool {
         abs(self - other) < tolerance
     }
 }

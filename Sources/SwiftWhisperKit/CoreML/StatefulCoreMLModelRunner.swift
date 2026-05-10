@@ -1,7 +1,7 @@
 @preconcurrency import CoreML
 import Foundation
-import Synchronization
 import SwiftWhisperCore
+import Synchronization
 
 /// Abstracts a stateful Core ML forward pass for the Whisper decoder.
 ///
@@ -79,7 +79,8 @@ public final class MLStateModelRunner: BranchableStatefulRunner, @unchecked Send
     ) async throws(SwiftWhisperError) -> any MLFeatureProvider {
         let cached = state.withLock { $0 }
         guard let cached else {
-            throw .decoderFailure("MLStateModelRunner: state not initialised; call resetState() first")
+            throw .decoderFailure(
+                "MLStateModelRunner: state not initialised; call resetState() first")
         }
         do {
             return try await model.prediction(from: features, using: cached)

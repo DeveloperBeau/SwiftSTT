@@ -1,9 +1,10 @@
 @preconcurrency import AVFoundation
 import Foundation
+import SwiftWhisperCore
 import Synchronization
 import Testing
+
 @testable import SwiftWhisperKit
-import SwiftWhisperCore
 
 @Suite("AudioFileInput")
 struct AudioFileInputTests {
@@ -38,7 +39,8 @@ struct AudioFileInputTests {
         )
 
         guard
-            let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames))
+            let buffer = AVAudioPCMBuffer(
+                pcmFormat: format, frameCapacity: AVAudioFrameCount(frames))
         else {
             throw NSError(domain: "test", code: 2)
         }

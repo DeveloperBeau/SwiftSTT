@@ -1,4 +1,5 @@
 import Testing
+
 @testable import SwiftWhisperCore
 
 @Suite("Models")
@@ -13,7 +14,8 @@ struct ModelsTests {
 
     @Test("MelSpectrogramResult valid dimensions")
     func melSpectrogramFramesLength() throws {
-        let result = try MelSpectrogramResult(frames: Array(repeating: 0, count: 80 * 100), nMels: 80, nFrames: 100)
+        let result = try MelSpectrogramResult(
+            frames: Array(repeating: 0, count: 80 * 100), nMels: 80, nFrames: 100)
         #expect(result.frames.count == 80 * 100)
     }
 

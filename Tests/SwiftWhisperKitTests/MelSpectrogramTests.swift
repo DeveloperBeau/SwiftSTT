@@ -1,12 +1,15 @@
 import Foundation
-import Testing
-@testable import SwiftWhisperKit
 import SwiftWhisperCore
+import Testing
+
+@testable import SwiftWhisperKit
 
 @Suite("MelSpectrogram")
 struct MelSpectrogramTests {
 
-    static func sine(frequency: Float, samples: Int, amplitude: Float = 0.5, sampleRate: Int = 16_000) -> AudioChunk {
+    static func sine(
+        frequency: Float, samples: Int, amplitude: Float = 0.5, sampleRate: Int = 16_000
+    ) -> AudioChunk {
         let buf = (0..<samples).map { i in
             amplitude * sinf(2 * .pi * frequency * Float(i) / Float(sampleRate))
         }
@@ -90,7 +93,8 @@ struct MelSpectrogramTests {
     @Test("Empty chunk produces empty result")
     func emptyChunk() async throws {
         let mel = try MelSpectrogram()
-        let result = try await mel.process(chunk: AudioChunk(samples: [], sampleRate: 16_000, timestamp: 0))
+        let result = try await mel.process(
+            chunk: AudioChunk(samples: [], sampleRate: 16_000, timestamp: 0))
         #expect(result.nFrames == 0)
         #expect(result.frames.isEmpty)
     }
@@ -100,7 +104,8 @@ struct MelSpectrogramTests {
     @Test("Output range is exactly 2.0 wide (Whisper normalization invariant)")
     func rangeWidth() async throws {
         let mel = try MelSpectrogram()
-        let result = try await mel.process(chunk: Self.sine(frequency: 440, samples: 16_000, amplitude: 0.9))
+        let result = try await mel.process(
+            chunk: Self.sine(frequency: 440, samples: 16_000, amplitude: 0.9))
         let minVal = result.frames.min()!
         let maxVal = result.frames.max()!
         // Whisper: out = (max(log_mel, log_mel.max() - 8.0) + 4.0) / 4.0
@@ -111,7 +116,8 @@ struct MelSpectrogramTests {
     @Test("All output values are finite")
     func valuesFinite() async throws {
         let mel = try MelSpectrogram()
-        let result = try await mel.process(chunk: Self.sine(frequency: 440, samples: 16_000, amplitude: 0.9))
+        let result = try await mel.process(
+            chunk: Self.sine(frequency: 440, samples: 16_000, amplitude: 0.9))
         for v in result.frames {
             #expect(v.isFinite)
         }
@@ -120,7 +126,8 @@ struct MelSpectrogramTests {
     @Test("Peak mel band for 440Hz is in lower third of bands")
     func peakBandFor440Hz() async throws {
         let mel = try MelSpectrogram(nMels: 80)
-        let result = try await mel.process(chunk: Self.sine(frequency: 440, samples: 16_000, amplitude: 0.9))
+        let result = try await mel.process(
+            chunk: Self.sine(frequency: 440, samples: 16_000, amplitude: 0.9))
 
         // For each mel band, sum across all time frames.
         var bandTotals = [Float](repeating: 0, count: 80)

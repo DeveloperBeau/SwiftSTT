@@ -1,8 +1,9 @@
 @preconcurrency import CoreML
 import Foundation
-import Testing
-@testable import SwiftWhisperKit
 import SwiftWhisperCore
+import Testing
+
+@testable import SwiftWhisperKit
 
 /// End-to-end suite that downloads a real Whisper model and runs it through
 /// the full encoder/decoder pipeline. Disabled by default. Run with:

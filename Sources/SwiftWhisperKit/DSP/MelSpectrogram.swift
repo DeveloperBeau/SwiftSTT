@@ -42,17 +42,17 @@ import SwiftWhisperCore
 public actor MelSpectrogram: MelSpectrogramProcessor {
 
     /// Frame size in samples. 25 ms at 16 kHz.
-    public static let frameLength: Int = FFTProcessor.frameLength   // 400
+    public static let frameLength: Int = FFTProcessor.frameLength  // 400
 
     /// Hop size in samples. 10 ms at 16 kHz, giving 100 frames per second.
     public static let hopLength: Int = 160
 
     /// Number of FFT power bins each frame produces.
-    public static let nFFTBins: Int = FFTProcessor.outputBins       // 257 (FFT padded to 512)
+    public static let nFFTBins: Int = FFTProcessor.outputBins  // 257 (FFT padded to 512)
 
     private let nMels: Int
     private let sampleRate: Float
-    private let filterbank: [Float]   // row-major [nMels x nFFTBins]
+    private let filterbank: [Float]  // row-major [nMels x nFFTBins]
     private let fft: FFTProcessor
     private var leftover: [Float] = []
 

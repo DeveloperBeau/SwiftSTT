@@ -1,9 +1,10 @@
 @preconcurrency import CoreML
 import Foundation
+import SwiftWhisperCore
 import Synchronization
 import Testing
+
 @testable import SwiftWhisperKit
-import SwiftWhisperCore
 
 // MARK: - Test mocks (file-scoped so they don't collide with TranscriptionPipelineTests)
 
@@ -72,7 +73,7 @@ private final class TSMockEncoderRunner: CoreMLModelRunner, @unchecked Sendable 
     ) async throws(SwiftWhisperError) -> any MLFeatureProvider {
         do {
             return try MLDictionaryFeatureProvider(dictionary: [
-                WhisperEncoder.outputFeatureName: array,
+                WhisperEncoder.outputFeatureName: array
             ])
         } catch {
             throw .decoderFailure("mock provider: \(error.localizedDescription)")
@@ -311,8 +312,8 @@ struct TranscriptionPipelineTimestampTests {
         let encArray = try makeEncoderOutputArray()
         let encRunner = TSMockEncoderRunner(array: encArray)
 
-        let startTimestamp = 50_364   // <|0.00|>
-        let endTimestamp = 50_414     // <|1.00|>
+        let startTimestamp = 50_364  // <|0.00|>
+        let endTimestamp = 50_414  // <|1.00|>
         let textTokenA = 100
         let textTokenB = 200
         let decRunner = TSScriptedDecoderRunner(
@@ -374,8 +375,8 @@ struct TranscriptionPipelineTimestampTests {
         let encArray = try makeEncoderOutputArray()
         let encRunner = TSMockEncoderRunner(array: encArray)
 
-        let startTimestamp = 50_364   // <|0.00|>
-        let endTimestamp = 50_414     // <|1.00|>
+        let startTimestamp = 50_364  // <|0.00|>
+        let endTimestamp = 50_414  // <|1.00|>
         let textToken = 300
         let perCycle: [Int] = [
             startTimestamp,
@@ -439,7 +440,7 @@ struct TranscriptionPipelineTimestampTests {
         let encRunner = TSMockEncoderRunner(array: encArray)
 
         let startTimestamp = 50_364
-        let endTimestamp = 50_414     // <|1.00|>
+        let endTimestamp = 50_414  // <|1.00|>
         let perCycle: [Int] = [
             startTimestamp,
             900,
@@ -612,7 +613,7 @@ struct TranscriptionPipelineTimestampTests {
         let encRunner = TSMockEncoderRunner(array: encArray)
 
         let startTimestamp = 50_364
-        let endTimestamp = 50_374     // <|0.20|>
+        let endTimestamp = 50_374  // <|0.20|>
         let perCycle: [Int] = [
             startTimestamp,
             777,
