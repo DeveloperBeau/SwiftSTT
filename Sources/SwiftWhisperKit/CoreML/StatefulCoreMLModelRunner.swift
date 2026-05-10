@@ -27,6 +27,22 @@ public protocol StatefulCoreMLModelRunner: Sendable {
     ) async throws(SwiftWhisperError) -> any MLFeatureProvider
 }
 
+/// A `StatefulCoreMLModelRunner` that can spawn an independent runner sharing
+/// the same underlying model but holding its own fresh KV cache. Used by beam
+/// search so each beam can advance its cache independently instead of
+/// re-prefilling on every step.
+///
+/// Apple does not expose `MLState` copy, so a freshly branched runner starts
+/// with an empty cache. Callers that need to pick up where the source runner
+/// left off must replay the relevant prefix into the branched runner.
+public protocol BranchableStatefulRunner: StatefulCoreMLModelRunner {
+
+    /// Returns a new runner that shares the same model but holds an
+    /// independent, freshly-allocated state. Mutations on the parent runner do
+    /// not affect the branch and vice versa.
+    func branch() async throws(SwiftWhisperError) -> any BranchableStatefulRunner
+}
+
 /// Production runner that delegates to a Core ML `MLModel` carrying an
 /// `MLState` for its KV cache.
 ///
@@ -35,7 +51,7 @@ public protocol StatefulCoreMLModelRunner: Sendable {
 /// pattern matches `MLModelRunner` in spirit, with the addition that the
 /// state must be initialised via ``resetState()`` before the first
 /// ``predict(features:)`` call.
-public final class MLStateModelRunner: StatefulCoreMLModelRunner, @unchecked Sendable {
+public final class MLStateModelRunner: BranchableStatefulRunner, @unchecked Sendable {
 
     private let model: MLModel
     private let state: Mutex<MLState?>
@@ -43,6 +59,12 @@ public final class MLStateModelRunner: StatefulCoreMLModelRunner, @unchecked Sen
     public init(model: MLModel) {
         self.model = model
         self.state = Mutex<MLState?>(nil)
+    }
+
+    public func branch() async throws(SwiftWhisperError) -> any BranchableStatefulRunner {
+        let clone = MLStateModelRunner(model: model)
+        await clone.resetState()
+        return clone
     }
 
     public func resetState() async {

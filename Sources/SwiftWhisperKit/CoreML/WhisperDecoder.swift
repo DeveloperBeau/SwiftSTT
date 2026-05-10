@@ -70,6 +70,7 @@ public actor WhisperDecoder: TokenDecoding {
     }
 
     private let runner: any StatefulCoreMLModelRunner
+    private let branchableRunner: (any BranchableStatefulRunner)?
     private let tokenizer: WhisperTokenizer
     private let featureNames: FeatureNames
     private var rng: any RandomSource
@@ -81,6 +82,23 @@ public actor WhisperDecoder: TokenDecoding {
         rng: any RandomSource = SystemRandom()
     ) {
         self.runner = runner
+        self.branchableRunner = nil
+        self.tokenizer = tokenizer
+        self.featureNames = featureNames
+        self.rng = rng
+    }
+
+    /// Initialiser variant that accepts a runner capable of branching its
+    /// state. Beam search uses the branchable path so each beam owns its own
+    /// KV cache and only re-prefills when its prefix changes.
+    public init(
+        branchableRunner: any BranchableStatefulRunner,
+        tokenizer: WhisperTokenizer,
+        featureNames: FeatureNames = .default,
+        rng: any RandomSource = SystemRandom()
+    ) {
+        self.runner = branchableRunner
+        self.branchableRunner = branchableRunner
         self.tokenizer = tokenizer
         self.featureNames = featureNames
         self.rng = rng
@@ -93,18 +111,74 @@ public actor WhisperDecoder: TokenDecoding {
         try Self.validate(options: options)
 
         if options.beamSize > 1 {
+            if let branchable = branchableRunner {
+                return try await beamSearchDecodeBranchable(
+                    encoderOutput: encoderOutput,
+                    options: options,
+                    rootRunner: branchable
+                )
+            }
             return try await beamSearchDecode(encoderOutput: encoderOutput, options: options)
         }
 
-        return try await singleHypothesisDecode(encoderOutput: encoderOutput, options: options)
+        return try await decodeWithFallback(encoderOutput: encoderOutput, options: options)
+    }
+
+    /// Retry attempts at successive temperatures until one passes the
+    /// anti-hallucination thresholds, or all are exhausted (in which case the
+    /// final attempt is returned). When the final attempt is also flagged as
+    /// silence by the no-speech check, an empty token list is returned.
+    private func decodeWithFallback(
+        encoderOutput: MLMultiArray,
+        options: DecodingOptions
+    ) async throws(SwiftWhisperError) -> [WhisperToken] {
+        var lastAttempt: DecodeAttempt?
+        for temperature in options.temperatureFallback {
+            var stepOptions = options
+            stepOptions.temperature = temperature
+            let attempt = try await singleHypothesisAttempt(
+                encoderOutput: encoderOutput,
+                options: stepOptions
+            )
+            lastAttempt = attempt
+            if attempt.passesThresholds(options: options) {
+                break
+            }
+        }
+        guard let final = lastAttempt else { return [] }
+        if final.isNoSpeech(options: options) { return [] }
+        return final.tokens
     }
 
     // MARK: - Single hypothesis (greedy or temperature sampling)
 
-    private func singleHypothesisDecode(
+    /// Outcome of one greedy or sampled decode pass. Carries the per-attempt
+    /// statistics that the temperature-fallback loop in
+    /// ``decodeWithFallback(encoderOutput:options:)`` consults to decide
+    /// whether to retry at a hotter temperature, accept the result, or skip
+    /// the segment entirely.
+    private struct DecodeAttempt {
+        var tokens: [WhisperToken]
+        var avgLogProb: Float
+        var noSpeechProb: Float
+        var compressionRatio: Float
+
+        func passesThresholds(options: DecodingOptions) -> Bool {
+            if avgLogProb < options.logProbThreshold { return false }
+            if compressionRatio > options.compressionRatioThreshold { return false }
+            return true
+        }
+
+        func isNoSpeech(options: DecodingOptions) -> Bool {
+            noSpeechProb > options.noSpeechThreshold
+                && avgLogProb < options.logProbThreshold
+        }
+    }
+
+    private func singleHypothesisAttempt(
         encoderOutput: MLMultiArray,
         options: DecodingOptions
-    ) async throws(SwiftWhisperError) -> [WhisperToken] {
+    ) async throws(SwiftWhisperError) -> DecodeAttempt {
         await runner.resetState()
 
         let prompt = Self.initialPromptTokens(options: options, tokenizer: tokenizer)
@@ -124,6 +198,8 @@ public actor WhisperDecoder: TokenDecoding {
         let endOfText = tokenizer.endOfTextToken
         let blankToken: Int? = options.suppressBlank ? Self.blankTokenId(tokenizer: tokenizer) : nil
         var generated: [WhisperToken] = []
+        var logProbSum: Float = 0
+        var noSpeechProb: Float = 0
 
         while generated.count < Self.maxTokens {
             let lastTokenId = generated.last?.id ?? prompt.last ?? endOfText
@@ -136,6 +212,18 @@ public actor WhisperDecoder: TokenDecoding {
             let output = try await runner.predict(features: provider)
             var logits = try Self.extractLogits(from: output, name: featureNames.logitsOutput)
 
+            // Apply repetition penalty to raw logits before any masking so the
+            // penalty mirrors the Whisper reference implementation, which
+            // operates on logits prior to suppression.
+            if options.repetitionPenalty != 1.0 {
+                let previousIds = generated.map(\.id)
+                Self.applyRepetitionPenalty(
+                    logits: &logits,
+                    previousTokens: previousIds,
+                    penalty: options.repetitionPenalty
+                )
+            }
+
             let blankForThisStep = generated.isEmpty ? blankToken : nil
             Self.applySuppression(
                 logits: &logits,
@@ -143,12 +231,36 @@ public actor WhisperDecoder: TokenDecoding {
                 blankToken: blankForThisStep
             )
 
+            // Logit bias is purely additive and runs after suppression so the
+            // caller can lift a token even when it would otherwise be masked
+            // by `-inf`. This matches the documented "any finite Float"
+            // contract on `DecodingOptions.logitBias`.
+            if !options.logitBias.isEmpty {
+                Self.applyLogitBias(logits: &logits, bias: options.logitBias)
+            }
+
+            if generated.isEmpty {
+                noSpeechProb = Self.noSpeechProbability(
+                    logits: logits,
+                    noSpeechToken: tokenizer.noSpeechToken
+                )
+            }
+
             let next: Int
+            let stepLogProb: Float
             if options.temperature > 0 {
-                let probs = Self.softmax(logits: logits, temperature: options.temperature)
+                var probs = Self.softmax(logits: logits, temperature: options.temperature)
+                if options.topP < 1.0 {
+                    probs = Self.topPFilter(probs: probs, threshold: options.topP)
+                }
                 next = Self.sample(probs: probs, rng: &rng)
+                stepLogProb = next < probs.count && probs[next] > 0
+                    ? logFloat(probs[next])
+                    : -.infinity
             } else {
                 next = Self.greedyArgmax(logits: logits)
+                let logProbs = Self.logSoftmax(logits: logits)
+                stepLogProb = next < logProbs.count ? logProbs[next] : -.infinity
             }
             cacheLength += 1
 
@@ -156,11 +268,21 @@ public actor WhisperDecoder: TokenDecoding {
                 break
             }
 
+            logProbSum += stepLogProb
             let text = tokenizer.decode(tokens: [next])
             generated.append(WhisperToken(id: next, text: text))
         }
 
-        return generated
+        let avgLogProb = generated.isEmpty ? 0 : logProbSum / Float(generated.count)
+        let decodedText = tokenizer.decode(tokens: generated.map(\.id))
+        let ratio = Self.compressionRatio(text: decodedText)
+
+        return DecodeAttempt(
+            tokens: generated,
+            avgLogProb: avgLogProb,
+            noSpeechProb: noSpeechProb,
+            compressionRatio: ratio
+        )
     }
 
     // MARK: - Beam search
@@ -247,6 +369,187 @@ public actor WhisperDecoder: TokenDecoding {
             lhs.logProbSum < rhs.logProbSum
         } ?? beams[0]
         return best.tokens
+    }
+
+    // MARK: - Beam search with per-beam KV state
+
+    /// Beam container used by the branchable path. Owns its runner clone and
+    /// tracks how much of its prefix the runner has already consumed so the
+    /// step loop can avoid redundant resets+replays.
+    private struct StatefulBeam {
+        var tokens: [WhisperToken]
+        var logProbSum: Float
+        var finished: Bool
+        var runner: any BranchableStatefulRunner
+        /// Token id sequence (prompt + beam tokens) the runner's KV cache
+        /// already contains. When the next step's required prefix matches
+        /// this, only one new predict is needed; otherwise reset+replay.
+        var consumedPrefix: [Int]
+    }
+
+    /// Width-N beam search where each beam owns its own branchable runner.
+    /// Because KV cache state is independent per beam, the typical step costs
+    /// one predict per beam (just the new token) instead of replaying the
+    /// full prefix every step.
+    ///
+    /// When two child beams come from the same parent, the parent runner is
+    /// branched once for the second child so both can advance independently.
+    private func beamSearchDecodeBranchable(
+        encoderOutput: MLMultiArray,
+        options: DecodingOptions,
+        rootRunner: any BranchableStatefulRunner
+    ) async throws(SwiftWhisperError) -> [WhisperToken] {
+        let prompt = Self.initialPromptTokens(options: options, tokenizer: tokenizer)
+        let endOfText = tokenizer.endOfTextToken
+        let blankToken: Int? = options.suppressBlank ? Self.blankTokenId(tokenizer: tokenizer) : nil
+
+        // Prime the root runner with the prompt prefix once. Subsequent
+        // beams are branched from a freshly primed runner using replayPrefix.
+        await rootRunner.resetState()
+        var rootCacheLength = 0
+        for tokenId in prompt {
+            let provider = try Self.buildFeatureProvider(
+                encoderOutput: encoderOutput,
+                tokenId: tokenId,
+                cacheLength: rootCacheLength,
+                names: featureNames
+            )
+            _ = try await rootRunner.predict(features: provider)
+            rootCacheLength += 1
+        }
+
+        var beams: [StatefulBeam] = [
+            StatefulBeam(
+                tokens: [],
+                logProbSum: 0,
+                finished: false,
+                runner: rootRunner,
+                consumedPrefix: prompt
+            )
+        ]
+
+        for step in 0..<Self.maxTokens {
+            if beams.allSatisfy(\.finished) { break }
+
+            var candidates: [(beamIndex: Int, tokenId: Int, score: Float, logProb: Float)] = []
+
+            for (beamIndex, beam) in beams.enumerated() {
+                if beam.finished {
+                    candidates.append((beamIndex, endOfText, beam.logProbSum, 0))
+                    continue
+                }
+
+                let requiredPrefix = prompt + beam.tokens.map(\.id)
+                let lastTokenId = requiredPrefix.last ?? endOfText
+                let cacheLength = requiredPrefix.count - 1
+
+                if beam.consumedPrefix != requiredPrefix {
+                    try await replayPrefixIntoRunner(
+                        runner: beam.runner,
+                        encoderOutput: encoderOutput,
+                        prefix: requiredPrefix
+                    )
+                    beams[beamIndex].consumedPrefix = requiredPrefix
+                }
+
+                let provider = try Self.buildFeatureProvider(
+                    encoderOutput: encoderOutput,
+                    tokenId: lastTokenId,
+                    cacheLength: cacheLength,
+                    names: featureNames
+                )
+                let output = try await beams[beamIndex].runner.predict(features: provider)
+                var logits = try Self.extractLogits(from: output, name: featureNames.logitsOutput)
+
+                let blankForThisStep = step == 0 ? blankToken : nil
+                Self.applySuppression(
+                    logits: &logits,
+                    suppressTokens: options.suppressTokens,
+                    blankToken: blankForThisStep
+                )
+                if !options.logitBias.isEmpty {
+                    Self.applyLogitBias(logits: &logits, bias: options.logitBias)
+                }
+
+                let logProbs = Self.logSoftmax(logits: logits)
+                let topK = Self.selectTopK(logits: logProbs, k: options.beamSize)
+                for entry in topK {
+                    candidates.append((beamIndex, entry.token, beam.logProbSum + entry.score, entry.score))
+                }
+            }
+
+            candidates.sort { $0.score > $1.score }
+            let kept = Array(candidates.prefix(options.beamSize))
+
+            // Reuse each parent runner for the first child only; subsequent
+            // children sharing that parent get a freshly branched runner.
+            var parentUsed = Set<Int>()
+            var nextBeams: [StatefulBeam] = []
+            for candidate in kept {
+                let parent = beams[candidate.beamIndex]
+                if parent.finished {
+                    nextBeams.append(parent)
+                    continue
+                }
+                let runner: any BranchableStatefulRunner
+                if parentUsed.insert(candidate.beamIndex).inserted {
+                    runner = parent.runner
+                } else {
+                    runner = try await parent.runner.branch()
+                }
+
+                if candidate.tokenId == endOfText {
+                    var finished = parent
+                    finished.runner = runner
+                    finished.logProbSum = candidate.score
+                    finished.finished = true
+                    nextBeams.append(finished)
+                    continue
+                }
+
+                let text = tokenizer.decode(tokens: [candidate.tokenId])
+                var grown = StatefulBeam(
+                    tokens: parent.tokens,
+                    logProbSum: candidate.score,
+                    finished: false,
+                    runner: runner,
+                    consumedPrefix: parent.consumedPrefix
+                )
+                grown.tokens.append(WhisperToken(id: candidate.tokenId, text: text, probability: expFloat(candidate.logProb)))
+                nextBeams.append(grown)
+            }
+            beams = nextBeams
+        }
+
+        let best = beams.max { lhs, rhs in
+            lhs.logProbSum < rhs.logProbSum
+        } ?? beams[0]
+        return best.tokens
+    }
+
+    /// Resets `runner` and feeds `prefix` through it so the KV cache mirrors
+    /// the beam's full token prefix up to (but not including) the slot the
+    /// next predict will produce.
+    private func replayPrefixIntoRunner(
+        runner: any BranchableStatefulRunner,
+        encoderOutput: MLMultiArray,
+        prefix: [Int]
+    ) async throws(SwiftWhisperError) {
+        await runner.resetState()
+        var cacheLength = 0
+        // Stop one short of the last token so the next predict() call (issued
+        // by the caller) advances the cache to the right slot.
+        let limit = max(prefix.count - 1, 0)
+        for index in 0..<limit {
+            let provider = try Self.buildFeatureProvider(
+                encoderOutput: encoderOutput,
+                tokenId: prefix[index],
+                cacheLength: cacheLength,
+                names: featureNames
+            )
+            _ = try await runner.predict(features: provider)
+            cacheLength += 1
+        }
     }
 
     /// Resets the runner state and feeds (prompt + already-chosen beam tokens)
@@ -336,6 +639,18 @@ public actor WhisperDecoder: TokenDecoding {
         }
         if options.beamSize > 1 && options.temperature > 0 {
             throw .invalidDecodingOption("beam search and temperature sampling are mutually exclusive")
+        }
+        if options.topP <= 0 || options.topP > 1.0 {
+            throw .invalidDecodingOption("topP must be in (0, 1]; got \(options.topP)")
+        }
+        if options.repetitionPenalty <= 0 {
+            throw .invalidDecodingOption("repetitionPenalty must be > 0; got \(options.repetitionPenalty)")
+        }
+        if options.beamSize == 1 && options.temperatureFallback.isEmpty {
+            throw .invalidDecodingOption("temperatureFallback must contain at least one entry")
+        }
+        if options.temperatureFallback.contains(where: { $0 < 0 }) {
+            throw .invalidDecodingOption("temperatureFallback entries must be >= 0")
         }
     }
 
@@ -511,6 +826,95 @@ public actor WhisperDecoder: TokenDecoding {
             return lhs.score > rhs.score
         }
         return Array(sorted.prefix(limit))
+    }
+
+    /// Top-p (nucleus) filter. Sorts `probs` descending, keeps the smallest
+    /// prefix whose cumulative mass reaches `threshold`, zeros the rest, and
+    /// renormalises so the result sums to 1. A `threshold` of `1.0` returns
+    /// the input unchanged. Values at or below `0` would degenerate to a
+    /// single-token distribution; the caller is expected to validate the
+    /// option first.
+    static func topPFilter(probs: [Float], threshold: Float) -> [Float] {
+        guard !probs.isEmpty else { return [] }
+        if threshold >= 1.0 { return probs }
+
+        let indexed = probs.enumerated().map { (index: $0.offset, value: $0.element) }
+        let sorted = indexed.sorted { lhs, rhs in
+            if lhs.value == rhs.value {
+                return lhs.index < rhs.index
+            }
+            return lhs.value > rhs.value
+        }
+
+        var keep = Set<Int>()
+        var cumulative: Float = 0
+        for entry in sorted {
+            keep.insert(entry.index)
+            cumulative += entry.value
+            if cumulative >= threshold { break }
+        }
+
+        var filtered = [Float](repeating: 0, count: probs.count)
+        var sum: Float = 0
+        for index in keep {
+            filtered[index] = probs[index]
+            sum += probs[index]
+        }
+        guard sum > 0 else {
+            return [Float](repeating: 1.0 / Float(probs.count), count: probs.count)
+        }
+        for i in 0..<filtered.count {
+            filtered[i] /= sum
+        }
+        return filtered
+    }
+
+    /// Applies Whisper's repetition penalty in place. Tokens that already
+    /// appeared in `previousTokens` have their positive logits divided by
+    /// `penalty` and negative logits multiplied; both shrink the relative
+    /// likelihood of repeating the token. Out-of-range token ids are
+    /// silently ignored.
+    static func applyRepetitionPenalty(
+        logits: inout [Float],
+        previousTokens: [Int],
+        penalty: Float
+    ) {
+        guard penalty != 1.0 else { return }
+        for tokenId in previousTokens where tokenId >= 0 && tokenId < logits.count {
+            let value = logits[tokenId]
+            logits[tokenId] = value > 0 ? value / penalty : value * penalty
+        }
+    }
+
+    /// Adds the per-token bias values to `logits` in place. Out-of-range
+    /// token ids are silently ignored.
+    static func applyLogitBias(logits: inout [Float], bias: [Int: Float]) {
+        for (tokenId, delta) in bias where tokenId >= 0 && tokenId < logits.count {
+            logits[tokenId] += delta
+        }
+    }
+
+    /// Length-based proxy for gzip compression ratio. Whisper's hallucination
+    /// failure mode is to loop on a few tokens, which collapses the unique
+    /// character count and inflates the ratio. A healthy English sentence
+    /// stays under ~2.0; pathological loops climb past 3.
+    ///
+    /// Empty text returns `0` so the caller's threshold check accepts the
+    /// value (no decoded content cannot be a hallucination by definition).
+    static func compressionRatio(text: String) -> Float {
+        guard !text.isEmpty else { return 0 }
+        let unique = Set(text).count
+        if unique == 0 { return 0 }
+        return Float(text.count) / Float(unique)
+    }
+
+    /// Reads the softmax probability of `noSpeechToken` from the raw logits.
+    /// Used by the decoder at the first generation step to flag silent
+    /// segments so the temperature fallback loop can skip them.
+    static func noSpeechProbability(logits: [Float], noSpeechToken: Int) -> Float {
+        guard noSpeechToken >= 0, noSpeechToken < logits.count else { return 0 }
+        let probs = softmax(logits: logits, temperature: 1.0)
+        return probs[noSpeechToken]
     }
 
     /// Splits a token stream into segments using Whisper's `<|t_start|> ...

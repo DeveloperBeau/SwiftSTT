@@ -142,6 +142,7 @@ struct WhisperDecoderTemperatureTests {
         options.language = nil
         options.suppressBlank = false
         options.temperature = 0.0
+        options.temperatureFallback = [0.0]
 
         let queue: [[Float]] = [
             oneHotLogits(vocabSize: vocabSize, hot: 11),
@@ -167,6 +168,7 @@ struct WhisperDecoderTemperatureTests {
         options.language = nil
         options.suppressBlank = false
         options.temperature = 0.5
+        options.temperatureFallback = [0.5]
 
         let queue: [[Float]] = [
             twoPeakLogits(vocabSize: vocabSize, hotA: 100, hotB: 200, valueA: 0.5, valueB: 1.0),
