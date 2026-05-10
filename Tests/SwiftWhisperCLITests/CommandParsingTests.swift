@@ -125,7 +125,7 @@ struct CommandParsingTests {
 
     @Test("root command exposes version")
     func rootHasVersion() {
-        #expect(SwiftWhisper.configuration.version == "0.10.0")
+        #expect(SwiftWhisper.configuration.version == "0.13.0")
     }
 
     @Test("root command lists subcommands")
