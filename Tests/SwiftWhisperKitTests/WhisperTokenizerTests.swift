@@ -42,6 +42,19 @@ struct WhisperTokenizerTests {
         #expect(tok.noTimestampsToken == 50_363)
         #expect(tok.transcribeToken == 50_359)
         #expect(tok.translateToken == 50_358)
+        #expect(tok.noSpeechToken == 50_362)
+    }
+
+    @Test("noSpeechToken honours an explicit override in the specials map")
+    func noSpeechTokenOverride() {
+        let tok = WhisperTokenizer(specialTokens: ["<|nospeech|>": 12_345])
+        #expect(tok.noSpeechToken == 12_345)
+    }
+
+    @Test("noSpeechToken falls back to the legacy nocaptions name when present")
+    func noSpeechTokenLegacyFallback() {
+        let tok = WhisperTokenizer(specialTokens: ["<|nocaptions|>": 99_999])
+        #expect(tok.noSpeechToken == 99_999)
     }
 
     @Test("Encodes plain text via BPE")

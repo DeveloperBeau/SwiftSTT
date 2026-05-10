@@ -212,6 +212,16 @@ public actor WhisperDecoder: TokenDecoding {
             let output = try await runner.predict(features: provider)
             var logits = try Self.extractLogits(from: output, name: featureNames.logitsOutput)
 
+            // Capture the no-speech probability from RAW logits (before any
+            // masking) so the silence-skip heuristic still sees it when the
+            // caller suppresses the token from emission.
+            if generated.isEmpty {
+                noSpeechProb = Self.noSpeechProbability(
+                    logits: logits,
+                    noSpeechToken: tokenizer.noSpeechToken
+                )
+            }
+
             // Apply repetition penalty to raw logits before any masking so the
             // penalty mirrors the Whisper reference implementation, which
             // operates on logits prior to suppression.
@@ -237,13 +247,6 @@ public actor WhisperDecoder: TokenDecoding {
             // contract on `DecodingOptions.logitBias`.
             if !options.logitBias.isEmpty {
                 Self.applyLogitBias(logits: &logits, bias: options.logitBias)
-            }
-
-            if generated.isEmpty {
-                noSpeechProb = Self.noSpeechProbability(
-                    logits: logits,
-                    noSpeechToken: tokenizer.noSpeechToken
-                )
             }
 
             let next: Int
