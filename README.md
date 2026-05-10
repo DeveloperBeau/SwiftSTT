@@ -2,15 +2,15 @@
 
 Pure Swift 6, Core ML-native real-time speech-to-text. No C++ or Objective-C bridges.
 
-[![CI](https://github.com/DeveloperBeau/SwiftWhisper/actions/workflows/ci.yml/badge.svg)](https://github.com/DeveloperBeau/SwiftWhisper/actions/workflows/ci.yml)
-[![Lint](https://github.com/DeveloperBeau/SwiftWhisper/actions/workflows/lint.yml/badge.svg)](https://github.com/DeveloperBeau/SwiftWhisper/actions/workflows/lint.yml)
+[![CI](https://github.com/DeveloperBeau/SwiftSTT/actions/workflows/ci.yml/badge.svg)](https://github.com/DeveloperBeau/SwiftSTT/actions/workflows/ci.yml)
+[![Lint](https://github.com/DeveloperBeau/SwiftSTT/actions/workflows/lint.yml/badge.svg)](https://github.com/DeveloperBeau/SwiftSTT/actions/workflows/lint.yml)
 [![Swift](https://img.shields.io/badge/swift-6.3-orange.svg)](https://www.swift.org/)
 [![Platforms](https://img.shields.io/badge/platforms-iOS%2018%20%7C%20macOS%2015-blue.svg)](#requirements)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ## What it does
 
-SwiftWhisper transcribes audio to text on-device using OpenAI's Whisper model running on Core ML. It supports live microphone capture and pre-recorded files, streams confirmed segments as the model produces them, and runs the entire pipeline in pure Swift. Output formats cover plain text plus six subtitle and structured formats. The package ships 437 unit tests, all mock-driven so CI runs in under 12 seconds without downloading model weights.
+SwiftWhisper transcribes audio to text on-device using OpenAI's Whisper model running on Core ML. It supports live microphone capture and pre-recorded files, streams confirmed segments as the model produces them, and runs the entire pipeline in pure Swift. Output formats cover plain text plus six subtitle and structured formats. Background-mode downloads keep large models pulling while the host app is suspended. The package ships 457 unit tests, all mock-driven, so CI runs in roughly 11 seconds without downloading model weights.
 
 ## Requirements
 
@@ -25,8 +25,11 @@ The iOS 18 / macOS 15 floor is set by `MLState`, which the decoder uses to hold 
 Add the package to your `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/DeveloperBeau/SwiftWhisper.git", from: "0.13.0"),
+.package(url: "https://github.com/DeveloperBeau/SwiftSTT.git", branch: "main"),
 ```
+
+> Tagged releases are coming. Until `v0.1.0` is published, pin to a commit hash
+> or track `main` directly.
 
 Then add `SwiftWhisperKit` to your target:
 
@@ -47,11 +50,16 @@ In Xcode: **File > Add Package Dependencies** and paste the repo URL.
 
 ```
 swift run swiftwhisper download tiny
+swift run swiftwhisper download largeV3Turbo --background
 swift run swiftwhisper transcribe audio.wav
 swift run swiftwhisper transcribe audio.wav --format srt -o subs.srt
 swift run swiftwhisper transcribe-mic --max-duration 30
 swift run swiftwhisper list-models
 ```
+
+`--background` opts in to a background `URLSession` so model pulls can keep
+making progress while the host app is suspended. See the DocC article
+`Background-Downloads` for the iOS integration walkthrough.
 
 Available subcommands: `download`, `list-models`, `transcribe`, `transcribe-mic`, `info`.
 
@@ -166,7 +174,7 @@ Three SPM targets:
 swift test
 ```
 
-437 unit tests in 49 suites finish in roughly 11 seconds on an M-series Mac. The full suite is mock-driven: no model download is required and no Core ML weights are loaded. Tests cover the encoder/decoder feature plumbing, beam search, sampling, timestamp parsing, VAD, mel spectrogram numerics, audio decoding, CLI argument parsing, and all seven output formatters.
+457 unit tests in 53 suites finish in roughly 11 seconds on an M-series Mac. The full suite is mock-driven: no model download is required and no Core ML weights are loaded. Tests cover the encoder/decoder feature plumbing, beam search, sampling, timestamp parsing, VAD, mel spectrogram numerics, audio decoding, CLI argument parsing, all seven output formatters, the background-download `URLSession` delegate bridge, and the `--background` CLI flag.
 
 A separate integration test target runs the real `.mlmodelc` end-to-end. It is gated by an environment variable so default `swift test` skips it:
 
@@ -182,8 +190,17 @@ MIT. See [LICENSE](LICENSE).
 
 ## Contributing
 
-Issues and pull requests are welcome. Please:
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide. In short:
 
-1. Run `swift test` before opening a PR.
-2. Keep commit messages plain and conventional (`feat(scope): ...`, `fix(scope): ...`).
-3. The pre-commit hook rejects em-dashes in source and markdown. Use `--` instead.
+1. Run `swift test` and `swift format lint -r Sources Tests Package.swift` before
+   opening a PR.
+2. Keep commit messages conventional (`feat(scope): ...`, `fix(scope): ...`).
+3. The CI lint workflow rejects em-dash characters (Unicode `U+2014`) and a
+   small set of marketing words in production sources. Use `--` or rewrite.
+
+Run `scripts/install-hooks.sh` once after cloning to install a pre-commit hook
+that runs `swift format lint` against staged Swift files.
+
+This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md). Security
+reports go through [private vulnerability reporting](https://github.com/DeveloperBeau/SwiftSTT/security/advisories/new)
+rather than public issues -- see [SECURITY.md](SECURITY.md).
