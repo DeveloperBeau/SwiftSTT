@@ -114,12 +114,17 @@ private final class TSScriptedDecoderRunner: StatefulCoreMLModelRunner, @uncheck
 
     func resetState() async {
         state.withLock { state in
-            guard state.index < state.sequences.count else {
+            guard !state.sequences.isEmpty else {
                 state.remainingPrefill = 0
                 state.pending = []
                 return
             }
-            let seq = state.sequences[state.index]
+            // Wrap around so the temperature-fallback retry loop in the
+            // single-hypothesis decoder can replay the same scripted sequence
+            // across attempts without test authors having to duplicate it
+            // per fallback temperature.
+            let position = state.index % state.sequences.count
+            let seq = state.sequences[position]
             state.index += 1
             state.remainingPrefill = seq.prefillCount
             state.pending = seq.tokens
