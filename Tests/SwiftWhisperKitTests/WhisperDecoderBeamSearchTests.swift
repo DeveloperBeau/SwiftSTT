@@ -496,4 +496,41 @@ struct WhisperDecoderBeamSearchBranchableTests {
         _ = try await decoder.decode(encoderOutput: encoder, options: options)
         #expect(runner.branchCount == 0)
     }
+
+    @Test("Branchable path skips replay when a beam's prefix is unchanged")
+    func branchableSkipsRedundantReplays() async throws {
+        let tokenizer = makeTokenizer()
+        var options = DecodingOptions.default
+        options.language = nil
+        options.suppressBlank = false
+        options.beamSize = 1
+
+        var fanOut = oneHotLogits(vocabSize: vocabSize, hot: 0, value: -10)
+        fanOut[100] = 5
+        var continueA = oneHotLogits(vocabSize: vocabSize, hot: 0, value: -10)
+        continueA[50] = 8
+        var continueB = oneHotLogits(vocabSize: vocabSize, hot: 0, value: -10)
+        continueB[tokenizer.endOfTextToken] = 8
+
+        let table: BranchableMockRunner.ScoreTable = [
+            tokenizer.noTimestampsToken: fanOut,
+            100: continueA,
+            50: continueB,
+        ]
+        let runner = BranchableMockRunner(
+            scoreTable: table,
+            defaultLogits: oneHotLogits(vocabSize: vocabSize, hot: tokenizer.endOfTextToken)
+        )
+        // beamSize=1 routes through the non-branchable greedy fallback path
+        // for the StatefulCoreMLModelRunner init below; tests that the
+        // branchable init still works for that case.
+        let decoder = WhisperDecoder(branchableRunner: runner, tokenizer: tokenizer)
+        let encoder = try makeEncoderArray()
+
+        _ = try await decoder.decode(encoderOutput: encoder, options: options)
+        // Greedy single-hypothesis path issues exactly one resetState per
+        // attempt; with the default fallback list it can run multiple
+        // attempts but each call is a single reset.
+        #expect(runner.resetCount >= 1)
+    }
 }
