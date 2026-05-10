@@ -51,7 +51,7 @@ public actor TranscriptionPipeline {
 
     private let audioInput: any AudioInputProvider
     private let vad: any VoiceActivityDetector
-    private let melSpectrogram: MelSpectrogram
+    private let melSpectrogram: any MelSpectrogramProcessor
     private let encoder: WhisperEncoder
     private let decoder: WhisperDecoder
     private let tokenizer: WhisperTokenizer
@@ -81,7 +81,7 @@ public actor TranscriptionPipeline {
     public init(
         audioInput: any AudioInputProvider,
         vad: any VoiceActivityDetector,
-        melSpectrogram: MelSpectrogram,
+        melSpectrogram: any MelSpectrogramProcessor,
         encoder: WhisperEncoder,
         decoder: WhisperDecoder,
         tokenizer: WhisperTokenizer,
