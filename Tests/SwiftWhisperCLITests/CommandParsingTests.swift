@@ -68,9 +68,10 @@ struct CommandParsingTests {
         defer { try? FileManager.default.removeItem(at: url) }
 
         let cmd = try TranscribeCommand.parse([url.path])
-        #expect(cmd.audioFile == url.path)
+        #expect(cmd.audioFiles == [url.path])
         #expect(cmd.model == .base)
         #expect(cmd.language == nil)
+        #expect(cmd.format == .text)
     }
 
     @Test("transcribe parses --model and --language")
@@ -101,12 +102,14 @@ struct CommandParsingTests {
         #expect(cmd.language == "de")
     }
 
-    @Test("transcribe rejects non-existent file path during parse")
+    @Test("transcribe rejects non-existent file path during validate")
     func transcribeRejectsMissingFile() {
         let bogus = "/nonexistent/path/missing-\(UUID().uuidString).wav"
-        #expect(throws: (any Error).self) {
-            try TranscribeCommand.parse([bogus])
-        }
+        do {
+            let cmd = try TranscribeCommand.parse([bogus])
+            try cmd.validate()
+            Issue.record("expected validation to fail")
+        } catch {}
     }
 
     @Test("transcribe accepts existing file path")
@@ -115,14 +118,14 @@ struct CommandParsingTests {
         defer { try? FileManager.default.removeItem(at: url) }
 
         let cmd = try TranscribeCommand.parse([url.path])
-        #expect(cmd.audioFile == url.path)
+        #expect(cmd.audioFiles == [url.path])
     }
 
     // MARK: - SwiftWhisper root
 
     @Test("root command exposes version")
     func rootHasVersion() {
-        #expect(SwiftWhisper.configuration.version == "0.7.0")
+        #expect(SwiftWhisper.configuration.version == "0.10.0")
     }
 
     @Test("root command lists subcommands")
@@ -131,6 +134,7 @@ struct CommandParsingTests {
         #expect(names.contains("download"))
         #expect(names.contains("list-models"))
         #expect(names.contains("transcribe"))
+        #expect(names.contains("transcribe-mic"))
         #expect(names.contains("info"))
     }
 

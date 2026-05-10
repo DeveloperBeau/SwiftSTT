@@ -30,4 +30,31 @@ enum TimeFormatter {
         let endStr = String(format: "%02d:%02d:%02d", h, m, s)
         return (startStr, endStr)
     }
+
+    /// Formats `seconds` as `HH:MM:SS,mmm` for SubRip (SRT). Negative inputs
+    /// clamp to zero.
+    nonisolated static func srtTimestamp(_ seconds: TimeInterval) -> String {
+        let parts = millisecondParts(seconds)
+        return String(format: "%02d:%02d:%02d,%03d", parts.h, parts.m, parts.s, parts.ms)
+    }
+
+    /// Formats `seconds` as `HH:MM:SS.mmm` for WebVTT. Negative inputs clamp
+    /// to zero.
+    nonisolated static func vttTimestamp(_ seconds: TimeInterval) -> String {
+        let parts = millisecondParts(seconds)
+        return String(format: "%02d:%02d:%02d.%03d", parts.h, parts.m, parts.s, parts.ms)
+    }
+
+    private nonisolated static func millisecondParts(
+        _ seconds: TimeInterval
+    ) -> (h: Int, m: Int, s: Int, ms: Int) {
+        let safe = max(0, seconds)
+        let totalMillis = Int((safe * 1_000).rounded())
+        let ms = totalMillis % 1_000
+        let totalSeconds = totalMillis / 1_000
+        let h = totalSeconds / 3_600
+        let m = (totalSeconds % 3_600) / 60
+        let s = totalSeconds % 60
+        return (h, m, s, ms)
+    }
 }

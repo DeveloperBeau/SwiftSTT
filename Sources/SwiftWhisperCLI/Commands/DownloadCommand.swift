@@ -3,11 +3,14 @@ import Foundation
 import SwiftWhisperCore
 import SwiftWhisperKit
 
-/// Downloads a Whisper Core ML model into the default cache.
+/// Downloads a Whisper Core ML model into the local cache.
 ///
 /// Progress lines stream to stderr so they don't pollute redirected stdout.
 /// Each fractional update overwrites the previous line via `\r`. When the
 /// download finishes, a final newline is written and the process exits 0.
+///
+/// `--cache-dir` overrides the default Application Support location. Tilde
+/// paths are expanded.
 struct DownloadCommand: AsyncParsableCommand {
 
     static let configuration = CommandConfiguration(
@@ -18,8 +21,11 @@ struct DownloadCommand: AsyncParsableCommand {
     @Argument(help: "Model name to download (tiny, base, small, largeV3Turbo).")
     var model: WhisperModel
 
+    @Option(name: .long, help: "Override the model cache directory. Defaults to ~/Library/Application Support/SwiftWhisper/Models.")
+    var cacheDir: String?
+
     func run() async throws {
-        let downloader = ModelDownloader()
+        let downloader = ModelDownloader(cacheDirectory: CacheDirectoryOption.resolve(cacheDir))
 
         if await downloader.isDownloaded(model) {
             print("\(model.rawValue) already downloaded.")

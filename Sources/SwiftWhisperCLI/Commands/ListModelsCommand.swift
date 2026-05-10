@@ -4,11 +4,9 @@ import SwiftWhisperCore
 import SwiftWhisperKit
 
 /// Lists all known Whisper models and shows whether each one has been
-/// downloaded into the default Application Support cache.
+/// downloaded into the configured cache.
 ///
-/// Both this command and `download` consult the same default cache directory.
-/// The `--cache-dir` flag is intentionally deferred; tests use a custom
-/// downloader instance directly.
+/// `--cache-dir` overrides the default Application Support location.
 struct ListModelsCommand: AsyncParsableCommand {
 
     static let configuration = CommandConfiguration(
@@ -16,8 +14,11 @@ struct ListModelsCommand: AsyncParsableCommand {
         abstract: "List known Whisper models and their cache status."
     )
 
+    @Option(name: .long, help: "Override the model cache directory. Defaults to ~/Library/Application Support/SwiftWhisper/Models.")
+    var cacheDir: String?
+
     func run() async throws {
-        let downloader = ModelDownloader()
+        let downloader = ModelDownloader(cacheDirectory: CacheDirectoryOption.resolve(cacheDir))
         for model in WhisperModel.allCases {
             let downloaded = await downloader.isDownloaded(model)
             let status = downloaded ? "[downloaded]" : "[not downloaded]"
