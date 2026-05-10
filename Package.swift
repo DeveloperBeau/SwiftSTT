@@ -63,6 +63,11 @@ let package = Package(
                 .defaultIsolation(MainActor.self),
             ]
         ),
+        .testTarget(
+            name: "SwiftWhisperIntegrationTests",
+            dependencies: ["SwiftWhisperKit"],
+            swiftSettings: upcoming
+        ),
     ],
     swiftLanguageModes: [.v6]
 )
