@@ -128,22 +128,21 @@ struct SegmentFormatterTests {
 
     @Test("Factory returns the correct concrete type per OutputFormat")
     func factoryDispatch() {
-        let text = SegmentFormatters.make(.text)
-        let srt = SegmentFormatters.make(.srt)
-        let vtt = SegmentFormatters.make(.vtt)
-        let json = SegmentFormatters.make(.json)
-
-        #expect(text is TextFormatter)
-        #expect(srt is SRTFormatter)
-        #expect(vtt is VTTFormatter)
-        #expect(json is JSONFormatter)
+        #expect(SegmentFormatters.make(.text) is TextFormatter)
+        #expect(SegmentFormatters.make(.srt) is SRTFormatter)
+        #expect(SegmentFormatters.make(.vtt) is VTTFormatter)
+        #expect(SegmentFormatters.make(.json) is JSONFormatter)
+        #expect(SegmentFormatters.make(.ndjson) is NDJSONFormatter)
+        #expect(SegmentFormatters.make(.ttml) is TTMLFormatter)
+        #expect(SegmentFormatters.make(.sbv) is SBVFormatter)
     }
 
-    @Test("Buffering flag is true only for JSON")
-    func bufferingOnlyJSON() {
+    @Test("Buffering flag is true for JSON and TTML, false for streaming formats")
+    func bufferingFlags() {
+        let buffering: Set<OutputFormat> = [.json, .ttml]
         for format in OutputFormat.allCases {
             let formatter = SegmentFormatters.make(format)
-            if format == .json {
+            if buffering.contains(format) {
                 #expect(formatter.bufferingRequired == true)
             } else {
                 #expect(formatter.bufferingRequired == false)
