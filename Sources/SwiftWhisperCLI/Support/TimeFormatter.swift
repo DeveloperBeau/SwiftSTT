@@ -45,6 +45,20 @@ enum TimeFormatter {
         return String(format: "%02d:%02d:%02d.%03d", parts.h, parts.m, parts.s, parts.ms)
     }
 
+    /// Formats `seconds` as `HH:MM:SS.mmm` for TTML `begin`/`end` attributes.
+    /// Functionally identical to ``vttTimestamp(_:)`` but kept under its own
+    /// name so callers read clearly at the point of use.
+    nonisolated static func ttmlTimestamp(_ seconds: TimeInterval) -> String {
+        vttTimestamp(seconds)
+    }
+
+    /// Formats `seconds` as `H:MM:SS.mmm` for YouTube SBV. Hours are not
+    /// zero-padded; minutes and seconds are. Negative inputs clamp to zero.
+    nonisolated static func sbvTimestamp(_ seconds: TimeInterval) -> String {
+        let parts = millisecondParts(seconds)
+        return String(format: "%d:%02d:%02d.%03d", parts.h, parts.m, parts.s, parts.ms)
+    }
+
     private nonisolated static func millisecondParts(
         _ seconds: TimeInterval
     ) -> (h: Int, m: Int, s: Int, ms: Int) {
