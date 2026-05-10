@@ -4,11 +4,21 @@ import Synchronization
 import SwiftWhisperCore
 
 /// Wires audio capture through VAD, mel spectrogram, encoder, decoder, and
-/// local agreement into a single streaming transcription actor.
+/// segment emission into a single streaming transcription actor.
 ///
 /// Call ``start()`` to begin capturing audio and receiving transcription
 /// segments. The returned `AsyncStream` yields a new ``TranscriptionSegment``
-/// each time the local agreement policy confirms stable tokens.
+/// each time the configured ``SegmentEmissionMode`` confirms one.
+///
+/// ## Sliding window
+///
+/// The pipeline keeps a rolling 30-second mel buffer inside the injected
+/// ``MelSpectrogram`` actor. After each successful decode the cursor advances
+/// past the consumed audio so the next encode operates on fresh content. In
+/// ``SegmentEmissionMode/timestampSegments`` mode the cursor moves to the
+/// last segment's predicted end time. In ``SegmentEmissionMode/stableTokens``
+/// mode (or when no timestamps are emitted) the cursor moves by 28 seconds,
+/// keeping a 2-second overlap so the next window has context.
 ///
 /// ```swift
 /// let pipeline = TranscriptionPipeline(
@@ -18,7 +28,8 @@ import SwiftWhisperCore
 ///     encoder: encoder,
 ///     decoder: decoder,
 ///     tokenizer: tokenizer,
-///     policy: LocalAgreementPolicy()
+///     policy: LocalAgreementPolicy(),
+///     emissionMode: .timestampSegments
 /// )
 ///
 /// let stream = try await pipeline.start()
@@ -28,6 +39,16 @@ import SwiftWhisperCore
 /// ```
 public actor TranscriptionPipeline {
 
+    /// Mel frames Whisper consumes per second of audio (10 ms hop).
+    public static let framesPerSecond: Int = 100
+
+    /// Whisper's encoder window in seconds.
+    public static let windowDurationSeconds: Double = 30.0
+
+    /// Cursor advance applied when no timestamp is available, leaving a
+    /// 2-second overlap into the next window for context.
+    public static let advanceFallbackSeconds: Double = 28.0
+
     private let audioInput: any AudioInputProvider
     private let vad: any VoiceActivityDetector
     private let melSpectrogram: MelSpectrogram
@@ -36,6 +57,7 @@ public actor TranscriptionPipeline {
     private let tokenizer: WhisperTokenizer
     private let policy: LocalAgreementPolicy
     private let options: DecodingOptions
+    private let emissionMode: SegmentEmissionMode
 
     private let targetSampleRate: Double
     private let bufferDurationSeconds: Double
@@ -45,6 +67,10 @@ public actor TranscriptionPipeline {
     private var decodeTask: Task<Void, Never>?
     private var segmentContinuation: AsyncStream<TranscriptionSegment>.Continuation?
     private var isRunning = false
+
+    /// Frames the pipeline has already retired from the rolling mel buffer.
+    /// Used to compute the per-decode `windowOffsetSeconds`.
+    private var melCursorFrames: Int = 0
 
     /// Shared box that the `@Sendable` audio callback and the actor can both
     /// access. Holds the chunk continuation behind a `Mutex` so the callback
@@ -61,6 +87,7 @@ public actor TranscriptionPipeline {
         tokenizer: WhisperTokenizer,
         policy: LocalAgreementPolicy,
         options: DecodingOptions = .default,
+        emissionMode: SegmentEmissionMode = .stableTokens,
         targetSampleRate: Double = 16_000,
         bufferDurationSeconds: Double = 0.064,
         decodeIntervalSeconds: Double = 1.0,
@@ -74,6 +101,7 @@ public actor TranscriptionPipeline {
         self.tokenizer = tokenizer
         self.policy = policy
         self.options = options
+        self.emissionMode = emissionMode
         self.targetSampleRate = targetSampleRate
         self.bufferDurationSeconds = bufferDurationSeconds
         self.decodeIntervalSeconds = decodeIntervalSeconds
@@ -81,7 +109,7 @@ public actor TranscriptionPipeline {
     }
 
     /// Opens the audio stream and returns transcription segments as the model
-    /// confirms them through local agreement.
+    /// confirms them.
     ///
     /// The stream finishes when ``stop()`` is called, the audio input ends, or
     /// an unrecoverable encoder/decoder error occurs.
@@ -111,6 +139,7 @@ public actor TranscriptionPipeline {
         }
 
         isRunning = true
+        melCursorFrames = 0
 
         decodeTask = Task { [weak self] in
             guard let self else { return }
@@ -136,94 +165,64 @@ public actor TranscriptionPipeline {
     // MARK: - Audio processing loop
 
     private func processAudioStream(_ stream: AsyncStream<AudioChunk>) async {
-        let nMels = 80
-        var accumulatedMel = [[Float]](repeating: [], count: nMels)
-        var pendingFrameCount = 0
         var wasSpeech = false
         var lastDecodeTime = Date().timeIntervalSince1970
-        var audioStartOffset: TimeInterval = 0
 
         for await chunk in stream {
             let speech = await vad.isSpeech(chunk: chunk)
 
             if !speech {
-                if wasSpeech && pendingFrameCount > 0 {
-                    await runDecodeCycle(
-                        accumulatedMel: &accumulatedMel,
-                        pendingFrameCount: &pendingFrameCount,
-                        audioStartOffset: audioStartOffset,
-                        nMels: nMels
-                    )
+                let pendingFrames = await melSpectrogram.currentFrameCount()
+                if wasSpeech && pendingFrames > 0 {
+                    await runDecodeCycle()
                     await melSpectrogram.reset()
                     await policy.reset()
-                    audioStartOffset = chunk.timestamp
+                    melCursorFrames = 0
                 }
                 wasSpeech = false
                 continue
             }
 
-            if !wasSpeech {
-                audioStartOffset = chunk.timestamp
-            }
             wasSpeech = true
 
-            let melResult: MelSpectrogramResult
             do {
-                melResult = try await melSpectrogram.process(chunk: chunk)
+                _ = try await melSpectrogram.process(chunk: chunk)
             } catch {
                 segmentContinuation?.finish()
                 return
             }
 
-            if melResult.nFrames > 0 {
-                appendMel(melResult, to: &accumulatedMel, nMels: nMels)
-                pendingFrameCount += melResult.nFrames
-            }
-
+            let pendingFrames = await melSpectrogram.currentFrameCount()
             let now = Date().timeIntervalSince1970
             let elapsed = now - lastDecodeTime
-            let shouldDecode = (elapsed >= decodeIntervalSeconds && pendingFrameCount > 0)
-                || pendingFrameCount >= maxBufferedFrames
+            let shouldDecode = (elapsed >= decodeIntervalSeconds && pendingFrames > 0)
+                || pendingFrames >= maxBufferedFrames
 
             if shouldDecode {
                 lastDecodeTime = now
-                await runDecodeCycle(
-                    accumulatedMel: &accumulatedMel,
-                    pendingFrameCount: &pendingFrameCount,
-                    audioStartOffset: audioStartOffset,
-                    nMels: nMels
-                )
+                await runDecodeCycle()
             }
         }
 
-        // Flush any remaining mel data when the stream ends
-        if pendingFrameCount > 0 {
-            await runDecodeCycle(
-                accumulatedMel: &accumulatedMel,
-                pendingFrameCount: &pendingFrameCount,
-                audioStartOffset: audioStartOffset,
-                nMels: nMels
-            )
+        let pendingFrames = await melSpectrogram.currentFrameCount()
+        if pendingFrames > 0 {
+            await runDecodeCycle()
         }
 
         segmentContinuation?.finish()
     }
 
-    private func runDecodeCycle(
-        accumulatedMel: inout [[Float]],
-        pendingFrameCount: inout Int,
-        audioStartOffset: TimeInterval,
-        nMels: Int
-    ) async {
-        guard pendingFrameCount > 0 else { return }
-
+    private func runDecodeCycle() async {
         let snapshot: MelSpectrogramResult
         do {
-            snapshot = try flattenMel(accumulatedMel, nMels: nMels, nFrames: pendingFrameCount)
+            snapshot = try await melSpectrogram.snapshot()
         } catch {
             segmentContinuation?.finish()
             return
         }
+        guard snapshot.nFrames > 0 else { return }
+
+        let windowOffsetSeconds = Double(melCursorFrames) / Double(Self.framesPerSecond)
 
         let encoderOutput: MLMultiArray
         do {
@@ -233,60 +232,93 @@ public actor TranscriptionPipeline {
             return
         }
 
+        var effectiveOptions = options
+        if emissionMode == .timestampSegments {
+            effectiveOptions.withoutTimestamps = false
+        }
+
         let tokens: [WhisperToken]
         do {
-            tokens = try await decoder.decode(encoderOutput: encoderOutput, options: options)
+            tokens = try await decoder.decode(encoderOutput: encoderOutput, options: effectiveOptions)
         } catch {
             segmentContinuation?.finish()
             return
         }
 
+        switch emissionMode {
+        case .stableTokens:
+            await emitStableTokens(
+                tokens: tokens,
+                windowOffsetSeconds: windowOffsetSeconds,
+                snapshotFrames: snapshot.nFrames
+            )
+        case .timestampSegments:
+            await emitTimestampSegments(
+                tokens: tokens,
+                windowOffsetSeconds: windowOffsetSeconds,
+                snapshotFrames: snapshot.nFrames
+            )
+        }
+    }
+
+    private func emitStableTokens(
+        tokens: [WhisperToken],
+        windowOffsetSeconds: TimeInterval,
+        snapshotFrames: Int
+    ) async {
         let contentTokens = tokens.filter { !tokenizer.isSpecial(token: $0.id) }
         let stableTokens = await policy.ingest(tokens: contentTokens)
 
         if !stableTokens.isEmpty {
             let text = tokenizer.decode(tokens: stableTokens.map(\.id))
-            let durationSeconds = Double(pendingFrameCount) * 0.01
+            let durationSeconds = Double(snapshotFrames) / Double(Self.framesPerSecond)
             let segment = TranscriptionSegment(
                 text: text,
-                start: audioStartOffset,
-                end: audioStartOffset + durationSeconds
+                start: windowOffsetSeconds,
+                end: windowOffsetSeconds + durationSeconds
             )
             segmentContinuation?.yield(segment)
         }
-
-        for i in 0..<nMels {
-            accumulatedMel[i].removeAll(keepingCapacity: true)
-        }
-        pendingFrameCount = 0
+        await advanceCursorFallback(snapshotFrames: snapshotFrames)
     }
 
-    // MARK: - Mel accumulation helpers
+    private func emitTimestampSegments(
+        tokens: [WhisperToken],
+        windowOffsetSeconds: TimeInterval,
+        snapshotFrames: Int
+    ) async {
+        let segments = WhisperDecoder.parseSegments(
+            tokens: tokens,
+            tokenizer: tokenizer,
+            windowOffsetSeconds: windowOffsetSeconds
+        )
 
-    private func appendMel(
-        _ result: MelSpectrogramResult,
-        to accumulated: inout [[Float]],
-        nMels: Int
-    ) {
-        for m in 0..<nMels {
-            for t in 0..<result.nFrames {
-                accumulated[m].append(result.frames[m * result.nFrames + t])
-            }
+        if segments.isEmpty {
+            await advanceCursorFallback(snapshotFrames: snapshotFrames)
+            return
         }
+
+        for segment in segments {
+            segmentContinuation?.yield(segment)
+        }
+
+        let lastEnd = segments[segments.count - 1].end
+        let absoluteEndFrame = Int((lastEnd * Double(Self.framesPerSecond)).rounded())
+        let consumeFrames = max(0, absoluteEndFrame - melCursorFrames)
+        await advance(framesConsumed: consumeFrames, snapshotFrames: snapshotFrames)
     }
 
-    private func flattenMel(
-        _ accumulated: [[Float]],
-        nMels: Int,
-        nFrames: Int
-    ) throws(SwiftWhisperError) -> MelSpectrogramResult {
-        var flat = [Float](repeating: 0, count: nMels * nFrames)
-        for m in 0..<nMels {
-            for t in 0..<nFrames {
-                flat[m * nFrames + t] = accumulated[m][t]
-            }
-        }
-        return try MelSpectrogramResult(frames: flat, nMels: nMels, nFrames: nFrames)
+    private func advanceCursorFallback(snapshotFrames: Int) async {
+        let fallbackFrames = Int(Self.advanceFallbackSeconds * Double(Self.framesPerSecond))
+        let consume = min(snapshotFrames, fallbackFrames)
+        await advance(framesConsumed: consume, snapshotFrames: snapshotFrames)
+    }
+
+    private func advance(framesConsumed: Int, snapshotFrames: Int) async {
+        let consume = max(0, min(framesConsumed, snapshotFrames))
+        guard consume > 0 else { return }
+        melCursorFrames += consume
+        await melSpectrogram.advance(framesConsumed: consume)
     }
 }
 
