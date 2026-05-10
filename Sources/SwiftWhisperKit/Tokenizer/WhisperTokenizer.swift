@@ -29,6 +29,11 @@ public struct WhisperTokenizer: Sendable {
     public let transcribeToken: Int
     public let translateToken: Int
 
+    /// Whisper's `<|nospeech|>` marker. The decoder reads its softmax
+    /// probability at the first generation step to decide whether the segment
+    /// is silence and should be skipped.
+    public let noSpeechToken: Int
+
     public init(bpe: BPETokenizer = BPETokenizer(), specialTokens: [String: Int] = [:]) {
         self.bpe = bpe
         self.specialTokens = specialTokens
@@ -43,6 +48,7 @@ public struct WhisperTokenizer: Sendable {
         self.noTimestampsToken = specialTokens["<|notimestamps|>"] ?? 50_363
         self.transcribeToken = specialTokens["<|transcribe|>"] ?? 50_359
         self.translateToken = specialTokens["<|translate|>"] ?? 50_358
+        self.noSpeechToken = specialTokens["<|nospeech|>"] ?? specialTokens["<|nocaptions|>"] ?? 50_362
     }
 
     /// Loads a tokenizer from a HuggingFace `tokenizer.json` file on disk.

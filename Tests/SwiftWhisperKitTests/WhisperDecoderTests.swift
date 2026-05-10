@@ -219,6 +219,7 @@ struct WhisperDecoderTests {
         var options = DecodingOptions.default
         options.language = nil
         options.suppressBlank = false
+        options.temperatureFallback = [0.0]
 
         let queue: [[Float]] = [
             oneHotLogits(vocabSize: vocabSize, hot: 100),
@@ -268,6 +269,7 @@ struct WhisperDecoderTests {
         var options = DecodingOptions.default
         options.language = nil
         options.suppressBlank = false
+        options.temperatureFallback = [0.0]
 
         let queue: [[Float]] = [
             oneHotLogits(vocabSize: vocabSize, hot: 100),
@@ -297,6 +299,7 @@ struct WhisperDecoderTests {
         var options = DecodingOptions.default
         options.language = "en"
         options.suppressBlank = false
+        options.temperatureFallback = [0.0]
 
         let queue: [[Float]] = [
             oneHotLogits(vocabSize: vocabSize, hot: 555),
@@ -346,6 +349,7 @@ struct WhisperDecoderTests {
         var options = DecodingOptions.default
         options.language = nil
         options.suppressBlank = false
+        options.temperatureFallback = [0.0]
 
         let queue: [[Float]] = [
             oneHotLogits(vocabSize: vocabSize, hot: 7),
