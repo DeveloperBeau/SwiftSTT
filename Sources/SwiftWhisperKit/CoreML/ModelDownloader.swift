@@ -12,13 +12,41 @@ import SwiftWhisperCore
 /// Guards against concurrent downloads of the same model using an in-flight
 /// task dictionary. A second call to `download(_:)` for a model that is already
 /// being downloaded throws `modelDownloadFailed`.
+///
+/// ## Foreground vs background
+///
+/// The default ``init(cacheDirectory:urlSession:)`` uses URLSession.shared
+/// (or the injected session) and only progresses while the host process is in
+/// memory. For iOS apps that need transfers to survive suspension, use
+/// ``init(cacheDirectory:mode:urlSession:)`` with
+/// ``ModelDownloadMode/background(identifier:)`` and forward
+/// `application(_:handleEventsForBackgroundURLSession:completionHandler:)`
+/// to ``handleBackgroundEvents(identifier:completion:)``.
 public actor ModelDownloader {
 
     private let baseCacheDirectory: URL
+    private let mode: ModelDownloadMode
     private let urlSession: URLSession
+    /// Foreground session reused for HuggingFace tree API calls.
+    /// Background `URLSessionConfiguration` instances reject `data(from:)`,
+    /// so listing always goes through this session.
+    private let listingSession: URLSession
+    private let delegate: ModelDownloadDelegate?
     private var inFlightDownloads: [WhisperModel: Task<Void, Never>] = [:]
+    private var inFlightStreams: [WhisperModel: AsyncThrowingStream<DownloadProgress, any Error>] = [:]
 
-    /// Creates a downloader.
+    /// Default Application Support location used when no cache directory is supplied.
+    public static var defaultCacheDirectory: URL {
+        let appSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first ?? FileManager.default.temporaryDirectory
+        return appSupport
+            .appendingPathComponent("SwiftWhisper", isDirectory: true)
+            .appendingPathComponent("Models", isDirectory: true)
+    }
+
+    /// Foreground-mode convenience that preserves the M4 API.
     ///
     /// - Parameters:
     ///   - cacheDirectory: where to store downloaded models. Pass `nil` to use
@@ -26,18 +54,62 @@ public actor ModelDownloader {
     ///   - urlSession: session for all network requests. Pass a custom session
     ///     with a mock `URLProtocol` for testing.
     public init(cacheDirectory: URL? = nil, urlSession: URLSession = .shared) {
+        self.init(
+            cacheDirectory: cacheDirectory,
+            mode: .foreground,
+            urlSession: urlSession
+        )
+    }
+
+    /// Mode-aware initializer.
+    ///
+    /// When `mode == .background(let id)`, the downloader builds a
+    /// `URLSessionConfiguration.background(withIdentifier: id)` with
+    /// `sessionSendsLaunchEvents = true` and registers a delegate that bridges
+    /// system callbacks back into the async stream API.
+    ///
+    /// When `mode == .foreground`, the supplied `urlSession` (or
+    /// `URLSession.shared`) handles file transfers directly.
+    ///
+    /// Pass a non-nil `urlSession` to override the mode default (test injection
+    /// of a `URLProtocol`-mocked session works for both modes).
+    public init(
+        cacheDirectory: URL? = nil,
+        mode: ModelDownloadMode,
+        urlSession: URLSession? = nil
+    ) {
         if let cacheDirectory {
             self.baseCacheDirectory = cacheDirectory
         } else {
-            let appSupport = FileManager.default.urls(
-                for: .applicationSupportDirectory,
-                in: .userDomainMask
-            ).first!
-            self.baseCacheDirectory = appSupport
-                .appendingPathComponent("SwiftWhisper", isDirectory: true)
-                .appendingPathComponent("Models", isDirectory: true)
+            self.baseCacheDirectory = ModelDownloader.defaultCacheDirectory
         }
-        self.urlSession = urlSession
+        self.mode = mode
+
+        switch mode {
+        case .foreground:
+            self.delegate = nil
+            self.urlSession = urlSession ?? .shared
+            self.listingSession = urlSession ?? .shared
+        case .background(let identifier):
+            let bridge = ModelDownloadDelegate()
+            self.delegate = bridge
+            ModelDownloadDelegate.register(bridge, for: identifier)
+            if let urlSession {
+                self.urlSession = urlSession
+            } else {
+                let config = URLSessionConfiguration.background(withIdentifier: identifier)
+                config.sessionSendsLaunchEvents = true
+                config.isDiscretionary = false
+                let session = URLSession(
+                    configuration: config,
+                    delegate: bridge,
+                    delegateQueue: nil
+                )
+                session.sessionDescription = "swiftwhisper.\(identifier)"
+                self.urlSession = session
+            }
+            self.listingSession = URLSession(configuration: .ephemeral)
+        }
     }
 
     /// On-disk directory for a specific model variant.
@@ -81,10 +153,17 @@ public actor ModelDownloader {
     /// Throws `modelDownloadFailed` if a download for this model is already
     /// in flight. Completed models are skipped (the stream yields `.complete`
     /// immediately).
+    ///
+    /// In background mode, if a system-managed task for the same URL is
+    /// already running (e.g. left over from a previous app launch), the
+    /// existing task is adopted rather than restarted.
     public func download(
         _ model: WhisperModel
     ) throws(SwiftWhisperError) -> AsyncThrowingStream<DownloadProgress, any Error> {
         if inFlightDownloads[model] != nil {
+            if case .background = mode, let existing = inFlightStreams[model] {
+                return existing
+            }
             throw .modelDownloadFailed("download already in progress for \(model.rawValue)")
         }
 
@@ -113,6 +192,7 @@ public actor ModelDownloader {
         }
 
         inFlightDownloads[model] = task
+        inFlightStreams[model] = stream
         return stream
     }
 
@@ -128,6 +208,7 @@ public actor ModelDownloader {
 
     private func clearInFlight(_ model: WhisperModel) {
         inFlightDownloads[model] = nil
+        inFlightStreams[model] = nil
     }
 
     private func markerPath(for model: WhisperModel) -> URL {
@@ -141,7 +222,6 @@ public actor ModelDownloader {
         let dir = cacheDirectory(for: model)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
-        // 1. List files via HuggingFace tree API.
         continuation.yield(DownloadProgress(
             totalFiles: 0, completedFiles: 0,
             totalBytes: 0, totalBytesDownloaded: 0,
@@ -152,7 +232,6 @@ public actor ModelDownloader {
         let totalBytes = files.reduce(Int64(0)) { $0 + $1.size }
         var bytesDownloaded: Int64 = 0
 
-        // 2. Download each file.
         for (index, file) in files.enumerated() {
             try Task.checkCancellation()
             continuation.yield(DownloadProgress(
@@ -166,7 +245,6 @@ public actor ModelDownloader {
             bytesDownloaded += file.size
         }
 
-        // 3. Write completion marker.
         continuation.yield(DownloadProgress(
             totalFiles: files.count, completedFiles: files.count,
             totalBytes: totalBytes, totalBytesDownloaded: bytesDownloaded,
@@ -194,9 +272,11 @@ public actor ModelDownloader {
     private func listFiles(model: WhisperModel) async throws -> [HFFile] {
         let repo = WhisperModel.huggingFaceRepo
         let path = model.huggingFacePath
-        let url = URL(string: "https://huggingface.co/api/models/\(repo)/tree/main/\(path)")!
+        guard let url = URL(string: "https://huggingface.co/api/models/\(repo)/tree/main/\(path)") else {
+            throw SwiftWhisperError.modelDownloadFailed("invalid HuggingFace URL for \(model.rawValue)")
+        }
 
-        let (data, response) = try await urlSession.data(from: url)
+        let (data, response) = try await listingSession.data(from: url)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw SwiftWhisperError.modelDownloadFailed(
                 "HuggingFace tree API returned \((response as? HTTPURLResponse)?.statusCode ?? -1)"
@@ -221,10 +301,23 @@ public actor ModelDownloader {
 
     private func downloadFile(_ file: HFFile, to directory: URL) async throws {
         let repo = WhisperModel.huggingFaceRepo
-        let downloadURL = URL(
+        guard let downloadURL = URL(
             string: "https://huggingface.co/\(repo)/resolve/main/\(file.relativePath)"
-        )!
+        ) else {
+            throw SwiftWhisperError.modelDownloadFailed("invalid download URL for \(file.name)")
+        }
 
+        let destURL = destinationURL(for: file, in: directory)
+
+        switch mode {
+        case .foreground:
+            try await downloadFileForeground(file, from: downloadURL, to: destURL)
+        case .background:
+            try await downloadFileBackground(file, from: downloadURL, to: destURL)
+        }
+    }
+
+    private func downloadFileForeground(_ file: HFFile, from downloadURL: URL, to destURL: URL) async throws {
         let (tempURL, response) = try await urlSession.download(from: downloadURL)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw SwiftWhisperError.modelDownloadFailed(
@@ -232,7 +325,6 @@ public actor ModelDownloader {
             )
         }
 
-        // Verify checksum if available.
         if let expected = file.sha256 {
             let fileData = try Data(contentsOf: tempURL)
             let actual = SHA256.hash(data: fileData)
@@ -243,22 +335,142 @@ public actor ModelDownloader {
             }
         }
 
-        // Create subdirectory structure if needed (e.g. `AudioEncoder.mlmodelc/weights/`).
-        let destPath = file.relativePath
-            .split(separator: "/")
-            .dropFirst() // drop model directory prefix repeated in relativePath
-        let destURL: URL
-        if destPath.count > 1 {
-            let subdir = destPath.dropLast().reduce(directory) { $0.appendingPathComponent(String($1), isDirectory: true) }
-            try FileManager.default.createDirectory(at: subdir, withIntermediateDirectories: true)
-            destURL = subdir.appendingPathComponent(String(destPath.last!))
-        } else {
-            destURL = directory.appendingPathComponent(file.name)
+        try moveDownloaded(from: tempURL, to: destURL)
+    }
+
+    private func downloadFileBackground(_ file: HFFile, from downloadURL: URL, to destURL: URL) async throws {
+        guard let delegate else {
+            throw SwiftWhisperError.modelDownloadFailed("background mode without delegate (illegal state)")
         }
 
+        let existing = await findExistingTask(for: downloadURL)
+        let task = existing ?? urlSession.downloadTask(with: downloadURL)
+
+        // Per-file progress stream is held only to satisfy the delegate's
+        // TaskHandle contract; the outer download loop emits its own
+        // file-granularity progress so this continuation is intentionally drained.
+        let (sinkStream, sinkContinuation) = AsyncThrowingStream<DownloadProgress, any Error>.makeStream()
+        let drain = Task { for try await _ in sinkStream {} }
+
+        let finishedURL: URL = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<URL, any Error>) in
+            let handle = ModelDownloadDelegate.TaskHandle(
+                continuation: sinkContinuation,
+                destination: destURL,
+                finished: { result in
+                    switch result {
+                    case .success(let url): cont.resume(returning: url)
+                    case .failure(let error): cont.resume(throwing: error)
+                    }
+                }
+            )
+            delegate.register(taskIdentifier: task.taskIdentifier, handle: handle)
+            if existing == nil {
+                task.resume()
+            }
+        }
+
+        try? await drain.value
+
+        if let expected = file.sha256 {
+            let fileData = try Data(contentsOf: finishedURL)
+            let actual = SHA256.hash(data: fileData)
+                .map { String(format: "%02x", $0) }
+                .joined()
+            if actual != expected {
+                throw SwiftWhisperError.modelChecksumMismatch(file: file.name)
+            }
+        }
+    }
+
+    private func destinationURL(for file: HFFile, in directory: URL) -> URL {
+        let destPath = file.relativePath
+            .split(separator: "/")
+            .dropFirst()
+        if destPath.count > 1 {
+            let subdir = destPath.dropLast().reduce(directory) { $0.appendingPathComponent(String($1), isDirectory: true) }
+            return subdir.appendingPathComponent(String(destPath.last!))
+        }
+        return directory.appendingPathComponent(file.name)
+    }
+
+    private func moveDownloaded(from tempURL: URL, to destURL: URL) throws {
+        try FileManager.default.createDirectory(
+            at: destURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
         if FileManager.default.fileExists(atPath: destURL.path) {
             try FileManager.default.removeItem(at: destURL)
         }
         try FileManager.default.moveItem(at: tempURL, to: destURL)
+    }
+
+    private func findExistingTask(for url: URL) async -> URLSessionDownloadTask? {
+        await withCheckedContinuation { cont in
+            urlSession.getAllTasks { tasks in
+                let match = tasks.first { task in
+                    guard task is URLSessionDownloadTask else { return false }
+                    return task.originalRequest?.url == url && task.state == .running
+                }
+                cont.resume(returning: match as? URLSessionDownloadTask)
+            }
+        }
+    }
+}
+
+// MARK: - Background re-entry
+
+public extension ModelDownloader {
+
+    /// Stashes the system completion handler delivered by
+    /// `application(_:handleEventsForBackgroundURLSession:completionHandler:)`.
+    ///
+    /// The handler fires once the URLSession reports
+    /// `urlSessionDidFinishEvents(forBackgroundURLSession:)` for the matching
+    /// identifier. Calling with an unknown identifier is a no-op so apps can
+    /// safely route every relaunch event without checking session names first.
+    static func handleBackgroundEvents(
+        identifier: String,
+        completion: @escaping @Sendable () -> Void
+    ) async {
+        guard let delegate = ModelDownloadDelegate.delegate(for: identifier) else {
+            completion()
+            return
+        }
+        delegate.stash(completion: completion)
+    }
+
+    /// Returns the currently in-flight background downloads keyed by model.
+    ///
+    /// Useful on app relaunch to surface progress for downloads that started
+    /// before suspension. Returns an empty dictionary in foreground mode.
+    func currentBackgroundDownloads() async -> [WhisperModel: Float] {
+        guard case .background = mode else { return [:] }
+        let tasks = await allTasks()
+        var result: [WhisperModel: Float] = [:]
+        for task in tasks {
+            guard
+                let url = task.originalRequest?.url?.absoluteString,
+                let model = WhisperModel.allCases.first(where: { url.contains($0.huggingFacePath) })
+            else { continue }
+            let expected = task.countOfBytesExpectedToReceive
+            let received = task.countOfBytesReceived
+            let fraction: Float
+            if expected > 0 {
+                fraction = Float(received) / Float(expected)
+            } else {
+                fraction = 0
+            }
+            // Keep the highest fraction seen for the model (a model spans many files).
+            result[model] = max(result[model] ?? 0, fraction)
+        }
+        return result
+    }
+
+    private func allTasks() async -> [URLSessionTask] {
+        await withCheckedContinuation { cont in
+            urlSession.getAllTasks { tasks in
+                cont.resume(returning: tasks)
+            }
+        }
     }
 }
