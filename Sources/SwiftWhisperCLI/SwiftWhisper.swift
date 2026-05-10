@@ -21,7 +21,7 @@ struct SwiftWhisper: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "swiftwhisper",
         abstract: "On-device speech-to-text powered by Whisper Core ML models.",
-        version: "0.10.0",
+        version: "0.13.0",
         subcommands: [
             DownloadCommand.self,
             ListModelsCommand.self,

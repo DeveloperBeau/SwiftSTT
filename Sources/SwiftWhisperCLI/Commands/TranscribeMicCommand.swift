@@ -9,12 +9,15 @@ import SwiftWhisperKit
 ///
 /// > Note: Microphone access requires `NSMicrophoneUsageDescription` in the
 /// > host binary's `Info.plist`. The bare `swift run` binary does not have
-/// > one; the first run will be denied. To grant access, package the binary
-/// > inside a `.app` bundle with the key set, or grant access via `tccutil`.
-/// > This command exits with a clear error if mic init fails.
+/// > one; the first run will be denied. The command surfaces a friendly
+/// > guidance message and exits with code 77 (`EX_NOPERM`) when permission
+/// > is denied. To grant access, package the binary inside a `.app` bundle
+/// > with the key set, or grant access via `tccutil` for the parent terminal.
 ///
-/// Output formats match `transcribe` (`text`, `srt`, `vtt`, `json`). JSON
-/// buffers all segments and only emits on shutdown.
+/// Output formats match `transcribe` (text, srt, vtt, json, ndjson, ttml,
+/// sbv). Buffered formats (json, ttml) flush only at shutdown.
+///
+/// `-o, --output <path>` writes the transcript to a file instead of stdout.
 struct TranscribeMicCommand: AsyncParsableCommand {
 
     static let configuration = CommandConfiguration(
@@ -28,13 +31,19 @@ struct TranscribeMicCommand: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "ISO-639-1 language code, e.g. 'en'. Auto-detect when omitted.")
     var language: String?
 
-    @Option(name: .shortAndLong, help: "Output format: text, srt, vtt, json (default: text).")
+    @Option(name: .shortAndLong, help: "Output format: text, srt, vtt, json, ndjson, ttml, sbv (default: text).")
     var format: OutputFormat = .text
 
     @Option(name: .long, help: "Stop after this many seconds. Unbounded when omitted.")
     var maxDuration: Double?
 
-    @Option(name: .long, help: "Override the model cache directory. Defaults to ~/Library/Application Support/SwiftWhisper/Models.")
+    @Option(name: [.short, .long], help: "Write transcript to <path> instead of stdout. Tilde paths are expanded.")
+    var output: String?
+
+    @Flag(name: .long, help: "Refuse to overwrite an existing --output file.")
+    var noClobber: Bool = false
+
+    @Option(name: .long, help: "Override the model cache directory. Honors SWIFTWHISPER_CACHE_DIR; default ~/Library/Application Support/SwiftWhisper/Models.")
     var cacheDir: String?
 
     func run() async throws {
@@ -77,12 +86,20 @@ struct TranscribeMicCommand: AsyncParsableCommand {
         let buffering = formatter.bufferingRequired
         let collector = SegmentCollector()
 
+        let destination: OutputDestination
+        if let output {
+            destination = try OutputDestination.file(at: output, noClobber: noClobber)
+        } else {
+            destination = .stdout()
+        }
+        defer { destination.close() }
+
         SignalHandler.reset()
         SignalHandler.installSIGINT()
         defer { SignalHandler.uninstallSIGINT() }
 
         if let header = formatter.header() {
-            print(header)
+            destination.writeLine(header)
         }
 
         writeStderr("Listening. Press Ctrl+C to stop.\n")
@@ -90,6 +107,9 @@ struct TranscribeMicCommand: AsyncParsableCommand {
         let stream: AsyncStream<TranscriptionSegment>
         do {
             stream = try await pipeline.start()
+        } catch SwiftWhisperError.micPermissionDenied {
+            Self.printPermissionGuidance()
+            throw ExitCode(Self.permissionDeniedExitCode)
         } catch {
             throw ValidationError("microphone start failed: \(error)")
         }
@@ -102,7 +122,7 @@ struct TranscribeMicCommand: AsyncParsableCommand {
                 } else {
                     let line = formatter.format(segment: segment, index: index)
                     if !line.isEmpty {
-                        print(line)
+                        destination.writeLine(line)
                     }
                     index += 1
                 }
@@ -119,14 +139,22 @@ struct TranscribeMicCommand: AsyncParsableCommand {
 
         if buffering {
             let segments = await collector.snapshot()
-            if let output = SegmentRendering.encodeJSON(
-                perFile: [(path: "<microphone>", segments: segments)],
-                isBatch: false
-            ) {
-                print(output)
+            if formatter is JSONFormatter {
+                if let payload = SegmentRendering.encodeJSON(
+                    perFile: [(path: "<microphone>", segments: segments)],
+                    isBatch: false
+                ) {
+                    destination.writeLine(payload)
+                }
+            } else if let body = formatter.footer(segments: segments) {
+                destination.writeLine(body)
             }
         }
     }
+
+    /// `EX_NOPERM` from `sysexits.h`. Distinct from the generic `1` so callers
+    /// (e.g. shell scripts wrapping the CLI) can detect a permission failure.
+    static let permissionDeniedExitCode: Int32 = 77
 
     /// Polls ``SignalHandler/isStopRequested()`` every 100 ms and races it
     /// against an optional `--max-duration` deadline. Returns when either
@@ -139,5 +167,27 @@ struct TranscribeMicCommand: AsyncParsableCommand {
             try? await Task.sleep(nanoseconds: pollNs)
         }
     }
-}
 
+    /// Prints a multi-line guidance message to stderr describing how to grant
+    /// microphone access on each platform. Called only on a confirmed
+    /// `micPermissionDenied`.
+    static func printPermissionGuidance() {
+        writeStderr(
+            """
+            Microphone access denied.
+
+            SwiftWhisper needs microphone access to transcribe live audio.
+
+            On macOS:
+              System Settings -> Privacy & Security -> Microphone
+              Add the terminal app you ran swiftwhisper from.
+
+            On iOS:
+              Settings -> Privacy & Security -> Microphone -> [App Name]
+
+            Re-run after granting access.
+
+            """
+        )
+    }
+}

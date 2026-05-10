@@ -5,22 +5,28 @@ import SwiftWhisperCore
 import SwiftWhisperKit
 
 /// Runs the streaming transcription pipeline against one or more audio files
-/// and prints the resulting segments to stdout in the requested format.
+/// and writes the resulting segments in the requested format.
 ///
 /// Supported formats (`--format`):
 /// - `text` (default): `[HH:MM:SS -> HH:MM:SS] text` per segment
-/// - `srt`: SubRip subtitle file with comma millisecond separators
+/// - `srt`: SubRip with comma millisecond separators
 /// - `vtt`: WebVTT with `WEBVTT` header and period millisecond separators
 /// - `json`: structured payload buffered until the end
+/// - `ndjson`: one JSON object per line (streamable)
+/// - `ttml`: Timed Text Markup Language (XML, buffered)
+/// - `sbv`: YouTube SubViewer (streamable)
 ///
-/// Multi-file batch is supported: pass any number of file paths. For
-/// `text`, `srt`, and `vtt` each file's output is preceded by `# <basename>`
-/// and a blank line. For `json` a `{"files": [...]}` wrapper is used; for a
-/// single file the JSON wrapper is `{"segments": [...]}`.
+/// Multi-file batch is supported. By default files are processed sequentially
+/// with `--concurrency 1`; raise it to run several files in parallel. Output
+/// ordering always matches the order of file arguments regardless of
+/// completion order.
 ///
-/// The model bundle must already be on disk; this command does not auto-
-/// download. On a missing bundle the user gets a `swiftwhisper download
-/// <model>` hint.
+/// Output destination defaults to standard output. Pass `-o, --output <path>`
+/// to write to a file. Combine with `--no-clobber` to refuse overwrite.
+///
+/// Audio format support follows what `AVAudioConverter` can resample to 16
+/// kHz mono Float32. WAV, AIFF, and CAF are well-tested. M4A typically works
+/// when the platform codec is available.
 struct TranscribeCommand: AsyncParsableCommand {
 
     static let configuration = CommandConfiguration(
@@ -28,7 +34,7 @@ struct TranscribeCommand: AsyncParsableCommand {
         abstract: "Transcribe one or more local audio files using a downloaded model."
     )
 
-    @Argument(help: "Paths to audio files to transcribe (WAV recommended).")
+    @Argument(help: "Paths to audio files to transcribe (WAV, AIFF, CAF; M4A when codec available).")
     var audioFiles: [String]
 
     @Option(name: .shortAndLong, help: "Model to use (default: base).")
@@ -37,10 +43,19 @@ struct TranscribeCommand: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "ISO-639-1 language code, e.g. 'en'. Auto-detect when omitted.")
     var language: String?
 
-    @Option(name: .shortAndLong, help: "Output format: text, srt, vtt, json (default: text).")
+    @Option(name: .shortAndLong, help: "Output format: text, srt, vtt, json, ndjson, ttml, sbv (default: text).")
     var format: OutputFormat = .text
 
-    @Option(name: .long, help: "Override the model cache directory. Defaults to ~/Library/Application Support/SwiftWhisper/Models.")
+    @Option(name: [.short, .long], help: "Write transcript to <path> instead of stdout. Tilde paths are expanded.")
+    var output: String?
+
+    @Flag(name: .long, help: "Refuse to overwrite an existing --output file.")
+    var noClobber: Bool = false
+
+    @Option(name: .long, help: "Process N files in parallel (default 1).")
+    var concurrency: Int = 1
+
+    @Option(name: .long, help: "Override the model cache directory. Honors SWIFTWHISPER_CACHE_DIR; default ~/Library/Application Support/SwiftWhisper/Models.")
     var cacheDir: String?
 
     func validate() throws {
@@ -53,9 +68,16 @@ struct TranscribeCommand: AsyncParsableCommand {
                 throw ValidationError("audio file not found: \(path)")
             }
         }
+        guard concurrency >= 1 else {
+            throw ValidationError("--concurrency must be >= 1 (got \(concurrency))")
+        }
     }
 
     func run() async throws {
+        if concurrency > 8 {
+            writeStderr("warning: --concurrency \(concurrency) is high; expect heavy memory and CPU pressure.\n")
+        }
+
         let downloader = ModelDownloader(cacheDirectory: CacheDirectoryOption.resolve(cacheDir))
         guard await downloader.isDownloaded(model) else {
             throw ValidationError(
@@ -79,50 +101,66 @@ struct TranscribeCommand: AsyncParsableCommand {
         let formatter = SegmentFormatters.make(format)
         let isBatch = audioFiles.count > 1
 
-        if format == .json {
-            try await runJSONBatch(
+        let destination: OutputDestination
+        if let output {
+            destination = try OutputDestination.file(at: output, noClobber: noClobber)
+        } else {
+            destination = .stdout()
+        }
+        defer { destination.close() }
+
+        let perFile: [(path: String, segments: [TranscriptionSegment])]
+        if concurrency > 1 && audioFiles.count > 1 {
+            perFile = try await collectAllParallel(
                 files: audioFiles,
+                concurrency: concurrency,
                 tokenizer: tokenizer,
                 encoder: encoder,
                 decoder: decoder,
-                options: options,
-                isBatch: isBatch
+                options: options
             )
         } else {
-            try await runStreaming(
+            perFile = try await collectAllSequential(
                 files: audioFiles,
                 tokenizer: tokenizer,
                 encoder: encoder,
                 decoder: decoder,
-                options: options,
+                options: options
+            )
+        }
+
+        if formatter.bufferingRequired {
+            try emitBuffered(
+                perFile: perFile,
                 formatter: formatter,
-                isBatch: isBatch
+                isBatch: isBatch,
+                destination: destination
+            )
+        } else {
+            emitStreaming(
+                perFile: perFile,
+                formatter: formatter,
+                isBatch: isBatch,
+                destination: destination
             )
         }
     }
 
-    // MARK: - Streaming formats (text, srt, vtt)
+    // MARK: - Sequential collection (current behaviour)
 
-    private func runStreaming(
+    private func collectAllSequential(
         files: [String],
         tokenizer: WhisperTokenizer,
         encoder: WhisperEncoder,
         decoder: WhisperDecoder,
-        options: DecodingOptions,
-        formatter: any SegmentFormatter,
-        isBatch: Bool
-    ) async throws {
-        if let header = formatter.header() {
-            print(header)
-        }
-
-        for (fileIndex, path) in files.enumerated() {
-            if isBatch {
-                if fileIndex > 0 { print("") }
-                let name = (path as NSString).lastPathComponent
-                print("# \(name)")
+        options: DecodingOptions
+    ) async throws -> [(path: String, segments: [TranscriptionSegment])] {
+        var collected: [(path: String, segments: [TranscriptionSegment])] = []
+        collected.reserveCapacity(files.count)
+        for (index, path) in files.enumerated() {
+            if files.count > 1 {
+                writeStderr("[\(index)/\(files.count) done] processing \(path)...\n")
             }
-
             let segments = try await collectSegments(
                 path: path,
                 tokenizer: tokenizer,
@@ -130,45 +168,144 @@ struct TranscribeCommand: AsyncParsableCommand {
                 decoder: decoder,
                 options: options
             )
-            for (index, segment) in segments.enumerated() {
+            collected.append((path: path, segments: segments))
+        }
+        if files.count > 1 {
+            writeStderr("[\(files.count)/\(files.count) done]\n")
+        }
+        return collected
+    }
+
+    // MARK: - Parallel collection
+
+    private func collectAllParallel(
+        files: [String],
+        concurrency: Int,
+        tokenizer: WhisperTokenizer,
+        encoder: WhisperEncoder,
+        decoder: WhisperDecoder,
+        options: DecodingOptions
+    ) async throws -> [(path: String, segments: [TranscriptionSegment])] {
+        let tasksLimit = max(1, min(concurrency, files.count))
+        var indexed: [Int: [TranscriptionSegment]] = [:]
+        let counter = ProgressCounter(total: files.count)
+
+        try await withThrowingTaskGroup(of: (Int, [TranscriptionSegment]).self) { group in
+            var nextIndex = 0
+            var inFlight = 0
+
+            while nextIndex < files.count && inFlight < tasksLimit {
+                let captured = nextIndex
+                let path = files[captured]
+                group.addTask {
+                    let segments = try await Self.collectSegmentsStatic(
+                        path: path,
+                        tokenizer: tokenizer,
+                        encoder: encoder,
+                        decoder: decoder,
+                        options: options
+                    )
+                    let done = await counter.completed(path: path)
+                    writeStderr("[\(done)/\(files.count) done] finished \(path)\n")
+                    return (captured, segments)
+                }
+                nextIndex += 1
+                inFlight += 1
+            }
+
+            while let (idx, segs) = try await group.next() {
+                indexed[idx] = segs
+                inFlight -= 1
+                if nextIndex < files.count {
+                    let captured = nextIndex
+                    let path = files[captured]
+                    group.addTask {
+                        let segments = try await Self.collectSegmentsStatic(
+                            path: path,
+                            tokenizer: tokenizer,
+                            encoder: encoder,
+                            decoder: decoder,
+                            options: options
+                        )
+                        let done = await counter.completed(path: path)
+                        writeStderr("[\(done)/\(files.count) done] finished \(path)\n")
+                        return (captured, segments)
+                    }
+                    nextIndex += 1
+                    inFlight += 1
+                }
+            }
+        }
+
+        var results: [(path: String, segments: [TranscriptionSegment])] = []
+        results.reserveCapacity(files.count)
+        for (i, path) in files.enumerated() {
+            results.append((path: path, segments: indexed[i] ?? []))
+        }
+        return results
+    }
+
+    // MARK: - Emission
+
+    private func emitStreaming(
+        perFile: [(path: String, segments: [TranscriptionSegment])],
+        formatter: any SegmentFormatter,
+        isBatch: Bool,
+        destination: OutputDestination
+    ) {
+        if let header = formatter.header() {
+            destination.writeLine(header)
+        }
+        for (fileIndex, entry) in perFile.enumerated() {
+            if isBatch, let separator = formatter.fileSeparator(path: entry.path, fileIndex: fileIndex) {
+                destination.writeLine(separator)
+            }
+            for (index, segment) in entry.segments.enumerated() {
                 let line = formatter.format(segment: segment, index: index)
                 if !line.isEmpty {
-                    print(line)
+                    destination.writeLine(line)
                 }
             }
         }
     }
 
-    // MARK: - JSON (buffered)
-
-    private func runJSONBatch(
-        files: [String],
-        tokenizer: WhisperTokenizer,
-        encoder: WhisperEncoder,
-        decoder: WhisperDecoder,
-        options: DecodingOptions,
-        isBatch: Bool
-    ) async throws {
-        var perFile: [(path: String, segments: [TranscriptionSegment])] = []
-        for path in files {
-            let segments = try await collectSegments(
-                path: path,
-                tokenizer: tokenizer,
-                encoder: encoder,
-                decoder: decoder,
-                options: options
-            )
-            perFile.append((path: path, segments: segments))
+    private func emitBuffered(
+        perFile: [(path: String, segments: [TranscriptionSegment])],
+        formatter: any SegmentFormatter,
+        isBatch: Bool,
+        destination: OutputDestination
+    ) throws {
+        if formatter is JSONFormatter {
+            if let output = SegmentRendering.encodeJSON(perFile: perFile, isBatch: isBatch) {
+                destination.writeLine(output)
+            }
+            return
         }
-
-        if let output = SegmentRendering.encodeJSON(perFile: perFile, isBatch: isBatch) {
-            print(output)
+        let allSegments = perFile.flatMap(\.segments)
+        if let body = formatter.footer(segments: allSegments) {
+            destination.writeLine(body)
         }
     }
 
     // MARK: - Per-file pipeline
 
     private func collectSegments(
+        path: String,
+        tokenizer: WhisperTokenizer,
+        encoder: WhisperEncoder,
+        decoder: WhisperDecoder,
+        options: DecodingOptions
+    ) async throws -> [TranscriptionSegment] {
+        try await Self.collectSegmentsStatic(
+            path: path,
+            tokenizer: tokenizer,
+            encoder: encoder,
+            decoder: decoder,
+            options: options
+        )
+    }
+
+    nonisolated static func collectSegmentsStatic(
         path: String,
         tokenizer: WhisperTokenizer,
         encoder: WhisperEncoder,
@@ -243,5 +380,22 @@ actor SegmentCollector {
 
     func snapshot() -> [TranscriptionSegment] {
         segments
+    }
+}
+
+/// Tracks how many files in a parallel batch have completed. Used solely to
+/// produce the `[i/N done]` stderr progress line; never affects ordering.
+actor ProgressCounter {
+
+    private let total: Int
+    private var done: Int = 0
+
+    init(total: Int) {
+        self.total = total
+    }
+
+    func completed(path: String) -> Int {
+        done += 1
+        return done
     }
 }
