@@ -8,6 +8,8 @@ import SwiftWhisperKit
 /// Useful when checking whether a previous `download` call landed everything
 /// the loader expects (`AudioEncoder.mlmodelc`, `TextDecoder.mlmodelc`,
 /// `tokenizer.json`).
+///
+/// `--cache-dir` overrides the default Application Support location.
 struct InfoCommand: AsyncParsableCommand {
 
     static let configuration = CommandConfiguration(
@@ -18,8 +20,11 @@ struct InfoCommand: AsyncParsableCommand {
     @Argument(help: "Model name (tiny, base, small, largeV3Turbo).")
     var model: WhisperModel
 
+    @Option(name: .long, help: "Override the model cache directory. Defaults to ~/Library/Application Support/SwiftWhisper/Models.")
+    var cacheDir: String?
+
     func run() async throws {
-        let downloader = ModelDownloader()
+        let downloader = ModelDownloader(cacheDirectory: CacheDirectoryOption.resolve(cacheDir))
         let dir = await downloader.cacheDirectory(for: model)
         let downloaded = await downloader.isDownloaded(model)
 
