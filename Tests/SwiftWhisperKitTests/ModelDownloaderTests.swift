@@ -78,7 +78,7 @@ struct ModelDownloaderTests {
         do {
             _ = try await dl.bundle(for: .tiny)
             Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
+        } catch {
             if case .modelFileMissing = error {
             } else {
                 Issue.record("wrong error: \(error)")
@@ -116,7 +116,7 @@ struct ModelDownloaderTests {
         do {
             _ = try await dl.download(.tiny)
             Issue.record("expected throw on concurrent download")
-        } catch let error as SwiftWhisperError {
+        } catch {
             if case .modelDownloadFailed = error {
             } else {
                 Issue.record("wrong error: \(error)")

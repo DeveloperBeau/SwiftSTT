@@ -267,7 +267,7 @@ struct WhisperDecoderBeamSearchTests {
         do {
             _ = try await decoder.decode(encoderOutput: encoder, options: options)
             Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
+        } catch {
             if case .invalidDecodingOption = error {
             } else {
                 Issue.record("wrong error: \(error)")
@@ -291,7 +291,7 @@ struct WhisperDecoderBeamSearchTests {
         do {
             _ = try await decoder.decode(encoderOutput: encoder, options: options)
             Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
+        } catch {
             if case .invalidDecodingOption = error {
             } else {
                 Issue.record("wrong error: \(error)")

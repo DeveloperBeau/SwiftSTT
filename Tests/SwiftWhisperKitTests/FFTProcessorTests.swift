@@ -78,7 +78,7 @@ struct FFTProcessorTests {
         do {
             _ = try fft.process(frame: [Float](repeating: 0, count: 200))
             Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
+        } catch {
             #expect(error == .fftFrameSizeMismatch(got: 200, expected: 400))
         }
     }
@@ -89,7 +89,7 @@ struct FFTProcessorTests {
         do {
             _ = try FFTProcessor(fftSize: 7)
             Issue.record("expected throw")
-        } catch let error as SwiftWhisperError {
+        } catch {
             if case .fftSetupFailed = error {
                 // Pass.
             } else {
