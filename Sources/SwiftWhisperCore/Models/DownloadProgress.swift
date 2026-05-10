@@ -3,6 +3,7 @@ import Foundation
 /// Snapshot of a model download's progress, emitted by the download stream.
 public struct DownloadProgress: Sendable, Equatable {
 
+    /// Lifecycle stages a download moves through, in order.
     public enum Phase: String, Sendable, Equatable {
         case listing
         case downloading

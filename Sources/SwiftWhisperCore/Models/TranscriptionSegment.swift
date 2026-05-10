@@ -24,6 +24,7 @@ public struct TranscriptionSegment: Sendable, Equatable {
     }
 }
 
+/// Convenience helpers for breaking a segment down into per-word slices.
 public extension TranscriptionSegment {
 
     /// Heuristic word-level timings derived by splitting ``text`` on whitespace
