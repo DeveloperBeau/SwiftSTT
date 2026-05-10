@@ -1,0 +1,59 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prose:
+    name: Prose checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: No em-dashes in source or markdown
+        run: |
+          set -e
+          matches=$(grep -rn $'\xe2\x80\x94' \
+            --include='*.swift' \
+            --include='*.md' \
+            --include='*.yml' \
+            --include='*.yaml' \
+            Sources Tests README.md .github 2>/dev/null || true)
+          if [ -n "$matches" ]; then
+            echo "Em-dash characters found. Replace with -- or rewrite:"
+            echo "$matches"
+            exit 1
+          fi
+          echo "OK: no em-dashes."
+
+      - name: No AI-cliche phrases in production source
+        run: |
+          set -e
+          # Scan Sources/ only. Tests are exempt because fixture text may include
+          # the words legitimately. Citation lines starting with "- " followed by
+          # an author surname (e.g. Whisper paper title) are exempt by exclusion
+          # of comment lines that contain "et al" or "1995" etc; we keep it
+          # simple by allowing the word "Robust" only when followed by " Speech"
+          # (the Whisper paper title).
+          tmp=$(mktemp)
+          grep -rniE '\b(powerful|comprehensive|seamlessly|leverage|dive into)\b' Sources \
+            --include='*.swift' --include='*.md' > "$tmp" || true
+          # Robust check: allow only the Whisper paper title.
+          grep -rniE '\brobust\b' Sources --include='*.swift' --include='*.md' \
+            | grep -viE 'Robust Speech Recognition' >> "$tmp" || true
+          if [ -s "$tmp" ]; then
+            echo "Forbidden marketing phrases found in Sources/:"
+            cat "$tmp"
+            rm "$tmp"
+            exit 1
+          fi
+          rm "$tmp"
+          echo "OK: no forbidden phrases."
