@@ -129,6 +129,19 @@ struct ModelDownloaderTests {
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let modelDir = tmp.appendingPathComponent("openai_whisper-tiny")
         try FileManager.default.createDirectory(at: modelDir, withIntermediateDirectories: true)
+        // isDownloaded() now validates marker + encoder/decoder/tokenizer.
+        try FileManager.default.createDirectory(
+            at: modelDir.appendingPathComponent("AudioEncoder.mlmodelc", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: modelDir.appendingPathComponent("TextDecoder.mlmodelc", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        FileManager.default.createFile(
+            atPath: modelDir.appendingPathComponent("tokenizer.json").path,
+            contents: Data("{}".utf8)
+        )
         FileManager.default.createFile(
             atPath: modelDir.appendingPathComponent(".complete").path,
             contents: nil
