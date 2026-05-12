@@ -121,9 +121,26 @@ public actor ModelDownloader {
         baseCacheDirectory.appendingPathComponent(model.huggingFacePath, isDirectory: true)
     }
 
-    /// Whether the model has been fully downloaded (marker file exists).
+    /// Whether the model has been fully downloaded.
+    ///
+    /// Verifies both the `.complete` marker and the presence of the encoder,
+    /// decoder, and tokenizer files. A marker without the expected files
+    /// (e.g. from an older buggy download) is treated as not-downloaded so
+    /// the next call to `download(_:)` redownloads cleanly.
     public func isDownloaded(_ model: WhisperModel) -> Bool {
-        FileManager.default.fileExists(atPath: markerPath(for: model).path)
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: markerPath(for: model).path) else { return false }
+        let dir = cacheDirectory(for: model)
+        let required = [
+            dir.appendingPathComponent("AudioEncoder.mlmodelc", isDirectory: true),
+            dir.appendingPathComponent("TextDecoder.mlmodelc", isDirectory: true),
+            dir.appendingPathComponent("tokenizer.json"),
+        ]
+        for url in required where !fm.fileExists(atPath: url.path) {
+            try? fm.removeItem(at: markerPath(for: model))
+            return false
+        }
+        return true
     }
 
     /// Returns a `ModelBundle` for an already-downloaded model.
@@ -259,6 +276,8 @@ public actor ModelDownloader {
             bytesDownloaded += file.size
         }
 
+        try await downloadTokenizer(for: model, to: dir)
+
         continuation.yield(
             DownloadProgress(
                 totalFiles: files.count, completedFiles: files.count,
@@ -288,8 +307,9 @@ public actor ModelDownloader {
     private func listFiles(model: WhisperModel) async throws -> [HFFile] {
         let repo = WhisperModel.huggingFaceRepo
         let path = model.huggingFacePath
-        guard let url = URL(string: "https://huggingface.co/api/models/\(repo)/tree/main/\(path)")
-        else {
+        let urlString =
+            "https://huggingface.co/api/models/\(repo)/tree/main/\(path)?recursive=true"
+        guard let url = URL(string: urlString) else {
             throw SwiftWhisperError.modelDownloadFailed(
                 "invalid HuggingFace URL for \(model.rawValue)")
         }
@@ -315,6 +335,22 @@ public actor ModelDownloader {
             let name = (rfilename as NSString).lastPathComponent
             return HFFile(name: name, relativePath: rfilename, size: size, sha256: sha)
         }
+    }
+
+    /// Fetches the upstream OpenAI `tokenizer.json` for the model and places it
+    /// in the model's cache directory root. argmaxinc's Core ML repo doesn't
+    /// ship tokenizer files, so they have to come from the original OpenAI repo.
+    private func downloadTokenizer(for model: WhisperModel, to directory: URL) async throws {
+        let destURL = directory.appendingPathComponent("tokenizer.json")
+        if FileManager.default.fileExists(atPath: destURL.path) { return }
+        let tokenizerURL = model.tokenizerDownloadURL
+        let (tempURL, response) = try await listingSession.download(from: tokenizerURL)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw SwiftWhisperError.modelDownloadFailed(
+                "tokenizer.json download returned \((response as? HTTPURLResponse)?.statusCode ?? -1)"
+            )
+        }
+        try moveDownloaded(from: tempURL, to: destURL)
     }
 
     private func downloadFile(_ file: HFFile, to directory: URL) async throws {

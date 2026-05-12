@@ -58,3 +58,39 @@ public enum SwiftWhisperError: Error, Sendable, Equatable {
     /// `beamSize < 1`, or an unsupported combination of beam search with sampling).
     case invalidDecodingOption(String)
 }
+
+extension SwiftWhisperError: LocalizedError {
+
+    /// Human-readable description used by `error.localizedDescription` and
+    /// surfaced via `NSError.bridge`.
+    public var errorDescription: String? {
+        switch self {
+        case .notImplemented:
+            return "Not implemented."
+        case .micPermissionDenied:
+            return "Microphone permission denied."
+        case .modelLoadFailed(let reason):
+            return "Model load failed: \(reason)"
+        case .audioConversionFailed:
+            return "Audio conversion failed."
+        case .audioCaptureFailed(let reason):
+            return "Audio capture failed: \(reason)"
+        case .decoderFailure(let reason):
+            return "Decoder failure: \(reason)"
+        case .invalidMelDimensions(let got, let expected):
+            return "Invalid mel dimensions: got \(got), expected \(expected)."
+        case .fftSetupFailed(let reason):
+            return "FFT setup failed: \(reason)"
+        case .fftFrameSizeMismatch(let got, let expected):
+            return "FFT frame size mismatch: got \(got), expected \(expected)."
+        case .modelDownloadFailed(let reason):
+            return "Model download failed: \(reason)"
+        case .modelChecksumMismatch(let file):
+            return "Checksum mismatch for \(file)."
+        case .modelFileMissing(let file):
+            return "Missing model file: \(file)"
+        case .invalidDecodingOption(let reason):
+            return "Invalid decoding option: \(reason)"
+        }
+    }
+}

@@ -34,8 +34,22 @@ public enum WhisperModel: String, CaseIterable, Sendable, Identifiable {
         case .tiny: "openai_whisper-tiny"
         case .base: "openai_whisper-base"
         case .small: "openai_whisper-small"
-        case .largeV3Turbo: "openai_whisper-large-v3-turbo"
+        case .largeV3Turbo: "openai_whisper-large-v3_turbo"
         }
+    }
+
+    /// Direct download URL for the upstream OpenAI `tokenizer.json` for this
+    /// model variant. argmaxinc's Core ML repo does not ship tokenizer files,
+    /// so they have to be fetched from the original OpenAI HuggingFace repos.
+    public var tokenizerDownloadURL: URL {
+        let slug: String
+        switch self {
+        case .tiny: slug = "whisper-tiny"
+        case .base: slug = "whisper-base"
+        case .small: slug = "whisper-small"
+        case .largeV3Turbo: slug = "whisper-large-v3-turbo"
+        }
+        return URL(string: "https://huggingface.co/openai/\(slug)/resolve/main/tokenizer.json")!
     }
 
     /// User-facing display name for the model.

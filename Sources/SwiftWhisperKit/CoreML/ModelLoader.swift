@@ -44,7 +44,10 @@ public actor ModelLoader {
 }
 
 /// Loaded encoder and decoder pair, ready to wire into the pipeline.
-public struct LoadedModels {
+///
+/// MLModel is documented as thread-safe; marked `@unchecked Sendable` so
+/// instances can cross actor boundaries.
+public struct LoadedModels: @unchecked Sendable {
     /// URL of the compiled encoder `.mlmodelc`.
     public let encoder: MLModel
     /// URL of the compiled decoder `.mlmodelc`.
