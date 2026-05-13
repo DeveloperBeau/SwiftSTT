@@ -161,7 +161,7 @@ struct WhisperEncoderTests {
         let value = provider.featureValue(for: WhisperEncoder.inputFeatureName)
         #expect(value != nil)
         let array = try #require(value?.multiArrayValue)
-        #expect(array.shape == [1, NSNumber(value: nMels), NSNumber(value: nFrames)])
+        #expect(array.shape == [1, NSNumber(value: nMels), 1, NSNumber(value: nFrames)])
         #expect(array.dataType == .float32)
 
         let count = nMels * nFrames
@@ -236,7 +236,7 @@ struct WhisperEncoderTests {
         #expect(runner.callCount == 1)
 
         let received = try #require(runner.lastInputArray)
-        #expect(received.shape == [1, 80, NSNumber(value: WhisperEncoder.expectedFrames)])
+        #expect(received.shape == [1, 80, 1, NSNumber(value: WhisperEncoder.expectedFrames)])
 
         // Values from the original 100 frames should be present at the start;
         // the rest should be zero-padded.
