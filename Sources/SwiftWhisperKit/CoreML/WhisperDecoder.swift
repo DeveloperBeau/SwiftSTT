@@ -77,6 +77,35 @@ public actor WhisperDecoder: TokenDecoding {
         )
     }
 
+    /// Which decoder runtime the loaded model exposes.
+    ///
+    /// Used by ``init(model:tokenizer:rng:)`` to pick the right runner.
+    enum RunnerKind: Sendable, Equatable {
+        case stateless
+        case stateful
+    }
+
+    /// Inspects the input feature names and reports which runner kind the
+    /// model needs.
+    ///
+    /// - Stateless models expose `input_ids`, `key_cache`, and `value_cache`
+    ///   as inputs. They flow the KV cache through tensors.
+    /// - Stateful models expose `decoder_input_ids` and an `MLState`-backed
+    ///   KV cache instead, with no `key_cache` input.
+    /// - Anything else is rejected as an unsupported export.
+    static func detectRunnerKind(
+        inputNames: Set<String>
+    ) throws(SwiftWhisperError) -> RunnerKind {
+        let hasStateless =
+            inputNames.contains(StatelessDecoderInputs.inputIDs)
+            && inputNames.contains(StatelessDecoderInputs.keyCache)
+            && inputNames.contains(StatelessDecoderInputs.valueCache)
+        if hasStateless { return .stateless }
+        let hasStateful = inputNames.contains("decoder_input_ids")
+        if hasStateful { return .stateful }
+        throw .modelLoadFailed("unrecognised decoder schema; inputs: \(inputNames)")
+    }
+
     private let runner: any StatefulCoreMLModelRunner
     private let branchableRunner: (any BranchableStatefulRunner)?
     private let tokenizer: WhisperTokenizer
@@ -95,6 +124,59 @@ public actor WhisperDecoder: TokenDecoding {
         self.tokenizer = tokenizer
         self.featureNames = featureNames
         self.rng = rng
+    }
+
+    /// Public factory that loads a Whisper decoder from an `MLModel` and
+    /// automatically picks the correct runner.
+    ///
+    /// Inspects the model's input descriptions to decide between the
+    /// stateless tensor-cache path (``StatelessDecoderRunner``) and the
+    /// stateful `MLState`-backed path (``MLStateModelRunner``). Feature
+    /// names are wired to match whichever export the model uses, so
+    /// callers do not have to override ``FeatureNames`` manually.
+    public init(
+        model: MLModel,
+        tokenizer: WhisperTokenizer,
+        rng: any RandomSource = SystemRandom()
+    ) throws(SwiftWhisperError) {
+        let inputs = model.modelDescription.inputDescriptionsByName
+        let inputNames = Set(inputs.keys)
+        let kind = try Self.detectRunnerKind(inputNames: inputNames)
+        switch kind {
+        case .stateless:
+            guard
+                let keyCacheConstraint = inputs[StatelessDecoderInputs.keyCache]?
+                    .multiArrayConstraint,
+                keyCacheConstraint.shape.count == 4
+            else {
+                throw .modelLoadFailed("key_cache input must be a rank-4 multiArray")
+            }
+            let layerWidth = keyCacheConstraint.shape[1].intValue
+            let capacity = keyCacheConstraint.shape[3].intValue
+            let stateless = try StatelessDecoderRunner(
+                model: model,
+                inputNames: inputNames,
+                layerWidth: layerWidth,
+                capacity: capacity
+            )
+            self.runner = stateless
+            self.branchableRunner = nil
+            self.tokenizer = tokenizer
+            self.featureNames = FeatureNames(
+                encoderEmbeds: StatelessDecoderInputs.encoderEmbeds,
+                tokenInput: StatelessDecoderInputs.inputIDs,
+                cacheLength: StatelessDecoderInputs.cacheLength,
+                logitsOutput: StatelessDecoderOutputs.logits
+            )
+            self.rng = rng
+        case .stateful:
+            let stateful = MLStateModelRunner(model: model)
+            self.runner = stateful
+            self.branchableRunner = stateful
+            self.tokenizer = tokenizer
+            self.featureNames = .default
+            self.rng = rng
+        }
     }
 
     /// Initialiser variant that accepts a runner capable of branching its
