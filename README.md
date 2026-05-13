@@ -17,6 +17,7 @@ SwiftWhisper transcribes audio to text on-device using OpenAI's Whisper model ru
 - Swift 6.3
 - Xcode 16.x or newer
 - iOS 18+ or macOS 15+
+- **A physical iOS device** for transcription. The iOS Simulator does not ship the MPSGraph backend that the argmaxinc Whisper Core ML models require for stateful decoding, so `MLModel.newState()` throws an uncatchable `NSInternalInconsistencyException` and the app crashes when the decoder allocates its KV cache. The Simulator is still fine for building, running the unit tests, and UI work that doesn't exercise the pipeline; for actual speech-to-text use a real iPhone or iPad. macOS hosts run fine.
 
 The iOS 18 / macOS 15 floor is set by `MLState`, which the decoder uses to hold the KV cache between forward passes. Earlier OS versions cannot run a stateful Core ML model.
 

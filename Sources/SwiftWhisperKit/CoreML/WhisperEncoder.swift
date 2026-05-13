@@ -68,15 +68,20 @@ public actor WhisperEncoder: AudioEncoding {
         return try MelSpectrogramResult(frames: out, nMels: nMels, nFrames: frames)
     }
 
-    /// Packs the mel buffer into an `MLMultiArray` of shape `[1, nMels, nFrames]`
-    /// and wraps it as a feature provider.
+    /// Packs the mel buffer into an `MLMultiArray` for the encoder.
+    ///
+    /// Uses shape `[1, nMels, 1, nFrames]` and wraps it as a feature provider.
+    /// The argmaxinc Core ML conversions of Whisper expect a rank-4 input with
+    /// a singleton "channel" dimension between nMels and nFrames. The flat
+    /// memory layout is unchanged versus rank 3 because the inserted axis
+    /// has length 1.
     static func buildFeatureProvider(
         mel: MelSpectrogramResult
     ) throws(SwiftWhisperError) -> any MLFeatureProvider {
         let array: MLMultiArray
         do {
             array = try MLMultiArray(
-                shape: [1, NSNumber(value: mel.nMels), NSNumber(value: mel.nFrames)],
+                shape: [1, NSNumber(value: mel.nMels), 1, NSNumber(value: mel.nFrames)],
                 dataType: .float32
             )
         } catch {
