@@ -51,4 +51,111 @@ struct StatelessDecoderRunnerTests {
             )
         }
     }
+
+    /// Builds a feature provider that the runner receives from
+    /// ``WhisperDecoder``, containing the three caller-supplied features.
+    private func callerFeatures(
+        tokenID: Int32,
+        cacheLength: Int32
+    ) throws -> any MLFeatureProvider {
+        let tokenArray = try MLMultiArray(shape: [1], dataType: .int32)
+        tokenArray.dataPointer.bindMemory(to: Int32.self, capacity: 1)[0] = tokenID
+        let lengthArray = try MLMultiArray(shape: [1], dataType: .int32)
+        lengthArray.dataPointer.bindMemory(to: Int32.self, capacity: 1)[0] = cacheLength
+        let encoder = try MLMultiArray(shape: [1, 384, 1, 1500], dataType: .float16)
+        return try MLDictionaryFeatureProvider(dictionary: [
+            "input_ids": tokenArray,
+            "cache_length": lengthArray,
+            "encoder_output_embeds": encoder,
+        ])
+    }
+
+    /// Builds a model output containing logits + cache updates.
+    private func modelOutput(
+        logitsCount: Int,
+        layerWidth: Int
+    ) throws -> any MLFeatureProvider {
+        let logits = try MLMultiArray(
+            shape: [1, 1, NSNumber(value: logitsCount)],
+            dataType: .float16
+        )
+        let keyUpdate = try MLMultiArray(
+            shape: [1, NSNumber(value: layerWidth), 1, 1],
+            dataType: .float16
+        )
+        let valueUpdate = try MLMultiArray(
+            shape: [1, NSNumber(value: layerWidth), 1, 1],
+            dataType: .float16
+        )
+        keyUpdate.dataPointer.bindMemory(to: UInt16.self, capacity: layerWidth)[0] = 0x3C00
+        valueUpdate.dataPointer.bindMemory(to: UInt16.self, capacity: layerWidth)[0] = 0x4000
+        return try MLDictionaryFeatureProvider(dictionary: [
+            "logits": logits,
+            "key_cache_updates": keyUpdate,
+            "value_cache_updates": valueUpdate,
+        ])
+    }
+
+    @Test("predict injects cache, masks, and reads logits from model output")
+    func predictRoundtrip() async throws {
+        let model = FakeModel()
+        model.nextOutput = try modelOutput(logitsCount: 51_865, layerWidth: 4)
+        let runner = try StatelessDecoderRunner(
+            model: model, inputNames: allStatelessInputNames, layerWidth: 4, capacity: 8
+        )
+        await runner.resetState()
+
+        let features = try callerFeatures(tokenID: 5, cacheLength: 0)
+        let output = try await runner.predict(features: features)
+
+        let logits = output.featureValue(for: "logits")?.multiArrayValue
+        #expect(logits != nil)
+        #expect(logits?.shape == [1, 1, 51_865])
+
+        let received = try #require(model.lastFeatures)
+        for name in StatelessDecoderInputs.required {
+            #expect(received.featureValue(for: name) != nil, "missing \(name)")
+        }
+    }
+
+    @Test("kv_cache_update_mask has 1.0 at current length and 0.0 elsewhere")
+    func updateMaskShape() async throws {
+        let model = FakeModel()
+        model.nextOutput = try modelOutput(logitsCount: 100, layerWidth: 4)
+        let runner = try StatelessDecoderRunner(
+            model: model, inputNames: allStatelessInputNames, layerWidth: 4, capacity: 8
+        )
+        await runner.resetState()
+        _ = try await runner.predict(features: try callerFeatures(tokenID: 1, cacheLength: 0))
+        let received = try #require(model.lastFeatures)
+        let mask = try #require(received.featureValue(for: "kv_cache_update_mask")?.multiArrayValue)
+        let maskPtr = mask.dataPointer.bindMemory(to: UInt16.self, capacity: 8)
+        #expect(maskPtr[0] == 0x3C00)  // Float16 1.0
+        for i in 1..<8 {
+            #expect(maskPtr[i] == 0x0000)
+        }
+    }
+
+    @Test("decoder_key_padding_mask blocks positions beyond cache length")
+    func paddingMaskShape() async throws {
+        let model = FakeModel()
+        model.nextOutput = try modelOutput(logitsCount: 100, layerWidth: 4)
+        let runner = try StatelessDecoderRunner(
+            model: model, inputNames: allStatelessInputNames, layerWidth: 4, capacity: 8
+        )
+        await runner.resetState()
+        // Run two steps so internal cacheLength advances to 2.
+        _ = try await runner.predict(features: try callerFeatures(tokenID: 1, cacheLength: 0))
+        _ = try await runner.predict(features: try callerFeatures(tokenID: 2, cacheLength: 1))
+        let received = try #require(model.lastFeatures)
+        let padding = try #require(
+            received.featureValue(for: "decoder_key_padding_mask")?.multiArrayValue
+        )
+        let ptr = padding.dataPointer.bindMemory(to: UInt16.self, capacity: 8)
+        // Positions 0..<2 are 0.0 (attendable), 2..<8 are -inf (Float16 0xFC00).
+        #expect(ptr[0] == 0x0000)
+        #expect(ptr[1] == 0x0000)
+        #expect(ptr[2] == 0xFC00)
+        #expect(ptr[7] == 0xFC00)
+    }
 }
