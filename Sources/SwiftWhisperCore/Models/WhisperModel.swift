@@ -113,4 +113,19 @@ public enum WhisperModel: String, CaseIterable, Sendable, Identifiable {
     public static func recommendedForCurrentDevice() -> WhisperModel {
         recommended(forPhysicalMemoryBytes: ProcessInfo.processInfo.physicalMemory)
     }
+
+    /// Whether this model fits comfortably in the supplied physical memory
+    /// budget.
+    ///
+    /// Adds a 1 GB headroom for the host app and OS, matching the rule used
+    /// by ``recommended(forPhysicalMemoryBytes:)``.
+    public func canRun(onPhysicalMemoryBytes bytes: UInt64) -> Bool {
+        let oneGB: UInt64 = 1_073_741_824
+        return UInt64(approximatePeakRuntimeBytes) + oneGB <= bytes
+    }
+
+    /// Whether this model fits in the current device's physical memory.
+    public var canRunOnCurrentDevice: Bool {
+        canRun(onPhysicalMemoryBytes: ProcessInfo.processInfo.physicalMemory)
+    }
 }

@@ -21,7 +21,7 @@ struct WhisperModelTests {
     @Test("HuggingFace paths map correctly")
     func huggingFacePaths() {
         #expect(WhisperModel.tiny.huggingFacePath == "openai_whisper-tiny")
-        #expect(WhisperModel.largeV3Turbo.huggingFacePath == "openai_whisper-large-v3-turbo")
+        #expect(WhisperModel.largeV3Turbo.huggingFacePath == "openai_whisper-large-v3_turbo")
     }
 
     @Test("Approximate sizes are in reasonable range")
