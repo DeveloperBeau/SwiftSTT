@@ -123,22 +123,42 @@ public actor ModelDownloader {
 
     /// Whether the model has been fully downloaded.
     ///
-    /// Verifies both the `.complete` marker and the presence of the encoder,
-    /// decoder, and tokenizer files. A marker without the expected files
-    /// (e.g. from an older buggy download) is treated as not-downloaded so
-    /// the next call to `download(_:)` redownloads cleanly.
+    /// Verifies the `.complete` marker, the tokenizer file, and that both
+    /// `AudioEncoder.mlmodelc` and `TextDecoder.mlmodelc` exist as
+    /// non-empty directories with a `coremldata.bin` and a `weights/`
+    /// subdirectory containing at least one file. A marker without those
+    /// files (e.g. from an older buggy download) is treated as
+    /// not-downloaded so the next call to `download(_:)` redownloads
+    /// cleanly.
     public func isDownloaded(_ model: WhisperModel) -> Bool {
         let fm = FileManager.default
         guard fm.fileExists(atPath: markerPath(for: model).path) else { return false }
         let dir = cacheDirectory(for: model)
-        let required = [
-            dir.appendingPathComponent("AudioEncoder.mlmodelc", isDirectory: true),
-            dir.appendingPathComponent("TextDecoder.mlmodelc", isDirectory: true),
-            dir.appendingPathComponent("tokenizer.json"),
-        ]
-        for url in required where !fm.fileExists(atPath: url.path) {
+
+        guard fm.fileExists(atPath: dir.appendingPathComponent("tokenizer.json").path) else {
             try? fm.removeItem(at: markerPath(for: model))
             return false
+        }
+
+        for mlmodelc in ["AudioEncoder.mlmodelc", "TextDecoder.mlmodelc"] {
+            let mlmodelcURL = dir.appendingPathComponent(mlmodelc, isDirectory: true)
+            guard fm.fileExists(atPath: mlmodelcURL.path) else {
+                try? fm.removeItem(at: markerPath(for: model))
+                return false
+            }
+            guard fm.fileExists(atPath: mlmodelcURL.appendingPathComponent("coremldata.bin").path)
+            else {
+                try? fm.removeItem(at: markerPath(for: model))
+                return false
+            }
+            let weightsURL = mlmodelcURL.appendingPathComponent("weights", isDirectory: true)
+            guard
+                let contents = try? fm.contentsOfDirectory(atPath: weightsURL.path),
+                !contents.isEmpty
+            else {
+                try? fm.removeItem(at: markerPath(for: model))
+                return false
+            }
         }
         return true
     }
