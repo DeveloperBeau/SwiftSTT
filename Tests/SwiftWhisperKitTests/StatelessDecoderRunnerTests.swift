@@ -158,4 +158,36 @@ struct StatelessDecoderRunnerTests {
         #expect(ptr[2] == 0xFC00)
         #expect(ptr[7] == 0xFC00)
     }
+
+    @Test("predict repacks rank-2 input_ids to rank-1 for stateless decoder")
+    func repackRank2TokenInput() async throws {
+        let model = FakeModel()
+        model.nextOutput = try modelOutput(logitsCount: 100, layerWidth: 4)
+        let runner = try StatelessDecoderRunner(
+            model: model, inputNames: allStatelessInputNames, layerWidth: 4, capacity: 8
+        )
+        await runner.resetState()
+
+        // Simulate WhisperDecoder packing the token as rank-2 [1, 1] (legacy
+        // stateful shape). The stateless runner must repack to rank-1 [1]
+        // before feeding the model.
+        let rank2Token = try MLMultiArray(shape: [1, 1], dataType: .int32)
+        rank2Token.dataPointer.bindMemory(to: Int32.self, capacity: 1)[0] = 42
+        let lengthArr = try MLMultiArray(shape: [1], dataType: .int32)
+        let encoder = try MLMultiArray(shape: [1, 384, 1, 1500], dataType: .float16)
+        let features = try MLDictionaryFeatureProvider(dictionary: [
+            "input_ids": rank2Token,
+            "cache_length": lengthArr,
+            "encoder_output_embeds": encoder,
+        ])
+
+        _ = try await runner.predict(features: features)
+
+        let received = try #require(model.lastFeatures)
+        let forwarded = try #require(
+            received.featureValue(for: "input_ids")?.multiArrayValue
+        )
+        #expect(forwarded.shape == [1])
+        #expect(forwarded.dataPointer.bindMemory(to: Int32.self, capacity: 1)[0] == 42)
+    }
 }

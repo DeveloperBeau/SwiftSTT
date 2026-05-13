@@ -78,7 +78,11 @@ final class StatelessDecoderRunner: StatefulCoreMLModelRunner, @unchecked Sendab
     func predict(
         features: any MLFeatureProvider
     ) async throws(SwiftWhisperError) -> any MLFeatureProvider {
-        let tokenIDs = try requireMultiArray(features, name: StatelessDecoderInputs.inputIDs)
+        let callerTokenIDs = try requireMultiArray(features, name: StatelessDecoderInputs.inputIDs)
+        // `WhisperDecoder` packs the token id at rank 2 ([1, 1]) for legacy
+        // stateful decoders. argmaxinc's stateless decoder expects rank 1
+        // ([1]). Repack into a rank-1 buffer with the same Int32 value.
+        let tokenIDs = try makeRank1TokenInput(from: callerTokenIDs)
         let cacheLengthArr = try requireMultiArray(
             features,
             name: StatelessDecoderInputs.cacheLength
@@ -156,6 +160,31 @@ final class StatelessDecoderRunner: StatefulCoreMLModelRunner, @unchecked Sendab
             throw .decoderFailure("missing output feature '\(name)'")
         }
         return array
+    }
+
+    private func makeRank1TokenInput(
+        from caller: MLMultiArray
+    ) throws(SwiftWhisperError) -> MLMultiArray {
+        guard caller.dataType == .int32, caller.count >= 1 else {
+            let kind = "\(caller.dataType)"
+            throw .decoderFailure(
+                "input_ids must be Int32 with at least 1 element, got dataType=\(kind) "
+                    + "count=\(caller.count)"
+            )
+        }
+        if caller.shape.count == 1 {
+            return caller
+        }
+        let repacked: MLMultiArray
+        do {
+            repacked = try MLMultiArray(shape: [1], dataType: .int32)
+        } catch {
+            throw .decoderFailure("input_ids repack alloc: \(error.localizedDescription)")
+        }
+        let srcPtr = caller.dataPointer.bindMemory(to: Int32.self, capacity: 1)
+        let dstPtr = repacked.dataPointer.bindMemory(to: Int32.self, capacity: 1)
+        dstPtr[0] = srcPtr[0]
+        return repacked
     }
 
     private func fillUpdateMask(currentLength: Int, capacity: Int) {
