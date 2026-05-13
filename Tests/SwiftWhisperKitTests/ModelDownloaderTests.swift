@@ -124,6 +124,49 @@ struct ModelDownloaderTests {
         }
     }
 
+    @Test("Tree API path key (new HF format) is parsed")
+    func treeAPIPathKey() async throws {
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        MockURLProtocol.reset()
+        let treeJSON = """
+            [{"type":"file","path":"openai_whisper-tiny/file-a.bin","size":4},
+             {"type":"directory","path":"openai_whisper-tiny/sub","size":0},
+             {"type":"file","path":"openai_whisper-tiny/sub/file-b.bin","size":5}]
+            """
+        MockURLProtocol.register(
+            path: "/api/models/argmaxinc/whisperkit-coreml/tree/main/openai_whisper-tiny",
+            data: Data(treeJSON.utf8)
+        )
+        MockURLProtocol.register(
+            path: "/argmaxinc/whisperkit-coreml/resolve/main/openai_whisper-tiny/file-a.bin",
+            data: Data(repeating: 0xAA, count: 4)
+        )
+        MockURLProtocol.register(
+            path: "/argmaxinc/whisperkit-coreml/resolve/main/openai_whisper-tiny/sub/file-b.bin",
+            data: Data(repeating: 0xBB, count: 5)
+        )
+        MockURLProtocol.register(
+            path: "/openai/whisper-tiny/resolve/main/tokenizer.json",
+            data: Data("{}".utf8)
+        )
+
+        let dl = ModelDownloader(cacheDirectory: tmp, urlSession: makeMockSession())
+        let stream = try await dl.download(.tiny)
+        var phases: [DownloadProgress.Phase] = []
+        for try await progress in stream {
+            phases.append(progress.phase)
+        }
+        #expect(phases.contains(.complete))
+
+        let modelDir = tmp.appendingPathComponent("openai_whisper-tiny")
+        let fileA = modelDir.appendingPathComponent("file-a.bin").path
+        let fileB = modelDir.appendingPathComponent("sub/file-b.bin").path
+        #expect(FileManager.default.fileExists(atPath: fileA))
+        #expect(FileManager.default.fileExists(atPath: fileB))
+
+        try FileManager.default.removeItem(at: tmp)
+    }
+
     @Test("Already-downloaded model returns immediate .complete")
     func alreadyDownloaded() async throws {
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

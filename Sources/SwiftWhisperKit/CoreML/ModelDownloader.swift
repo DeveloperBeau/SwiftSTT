@@ -348,12 +348,12 @@ public actor ModelDownloader {
         return items.compactMap { item -> HFFile? in
             guard
                 let type = item["type"] as? String, type == "file",
-                let rfilename = item["rfilename"] as? String
+                let relativePath = (item["path"] as? String) ?? (item["rfilename"] as? String)
             else { return nil }
             let size = (item["size"] as? Int64) ?? 0
             let sha: String? = (item["lfs"] as? [String: Any])?["oid"] as? String
-            let name = (rfilename as NSString).lastPathComponent
-            return HFFile(name: name, relativePath: rfilename, size: size, sha256: sha)
+            let name = (relativePath as NSString).lastPathComponent
+            return HFFile(name: name, relativePath: relativePath, size: size, sha256: sha)
         }
     }
 
