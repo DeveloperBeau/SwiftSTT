@@ -189,35 +189,37 @@ public actor WhisperCppEngine: TranscriptionEngine {
     ///
     /// Idempotent — safe to call when not recording.
     public func stop() async {
-        guard let input = audioInput else {
-            if loaded != nil { emitStatus(.ready) }
-            return
-        }
+        guard let input = audioInput else { return }  // truly idempotent: no-op
         captureToken = nil
         audioInput = nil
         await input.stop()
 
-        guard let cached = loaded else {
+        if let cached = loaded {
+            let pcm = buffer
             buffer.removeAll(keepingCapacity: true)
-            emitStatus(.ready)
-            return
-        }
-        let pcm = buffer
-        buffer.removeAll(keepingCapacity: true)
-
-        do {
-            let segments = try await cached.context.transcribe(
-                samples: pcm,
-                options: DecodingOptions(language: "en")
-            )
-            for segment in segments {
-                emitSegment(segment)
+            do {
+                let segments = try await cached.context.transcribe(
+                    samples: pcm,
+                    options: DecodingOptions(language: "en")
+                )
+                for segment in segments {
+                    emitSegment(segment)
+                }
+            } catch {
+                engineLog.error(
+                    "transcribe failed: \(String(describing: error), privacy: .private)"
+                )
             }
-        } catch {
-            engineLog.error(
-                "transcribe failed: \(String(describing: error), privacy: .private)"
-            )
+        } else {
+            buffer.removeAll(keepingCapacity: true)
         }
+
+        // Close segment streams for this recording session.
+        for (_, cont) in segmentContinuations {
+            cont.finish()
+        }
+        segmentContinuations.removeAll(keepingCapacity: true)
+
         emitStatus(.ready)
     }
 

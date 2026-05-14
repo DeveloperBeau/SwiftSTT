@@ -1,11 +1,10 @@
 import ArgumentParser
-@preconcurrency import CoreML
 import Foundation
 import SwiftWhisperCore
 import SwiftWhisperKit
 
-/// Runs the streaming transcription pipeline against one or more audio files
-/// and writes the resulting segments in the requested format.
+/// Runs whisper.cpp transcription against one or more audio files and writes
+/// the resulting segments in the requested format.
 ///
 /// Supported formats (`--format`):
 /// - `text` (default): `[HH:MM:SS -> HH:MM:SS] text` per segment
@@ -20,6 +19,12 @@ import SwiftWhisperKit
 /// with `--concurrency 1`; raise it to run several files in parallel. Output
 /// ordering always matches the order of file arguments regardless of
 /// completion order.
+///
+/// > Note: `--concurrency > 1` uses a shared `WhisperCppContext`, which
+/// > serialises `whisper_full` calls through the actor. Effective parallelism
+/// > is therefore limited by the time spent in I/O and resampling. For
+/// > CPU-bound throughput, running multiple `swiftwhisper transcribe`
+/// > processes is more effective.
 ///
 /// Output destination defaults to standard output. Pass `-o, --output <path>`
 /// to write to a file. Combine with `--no-clobber` to refuse overwrite.
@@ -58,7 +63,11 @@ struct TranscribeCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Refuse to overwrite an existing --output file.")
     var noClobber: Bool = false
 
-    @Option(name: .long, help: "Process N files in parallel (default 1).")
+    @Option(
+        name: .long,
+        help:
+            "Process N files in parallel (default 1). I/O and resampling overlap, but whisper.cpp inference is serialized through a shared context."
+    )
     var concurrency: Int = 1
 
     @Option(
@@ -84,21 +93,74 @@ struct TranscribeCommand: AsyncParsableCommand {
     }
 
     func run() async throws {
-        // TODO(Task 8): Rewrite this command to use WhisperCppEngine directly.
-        // The Core ML pipeline (ModelLoader, WhisperEncoder, WhisperDecoder) has been
-        // removed. Task 8 will replace this body with a whisper.cpp-based implementation.
-        throw ValidationError(
-            "transcribe requires the Task 8 rewrite."
-        )
+        if concurrency > 8 {
+            writeStderr(
+                "warning: --concurrency \(concurrency) is high; expect heavy memory and CPU pressure.\n"
+            )
+        }
+
+        let downloader = ModelDownloader(cacheDirectory: CacheDirectoryOption.resolve(cacheDir))
+        guard await downloader.isDownloaded(model) else {
+            throw ValidationError(
+                "model '\(model.rawValue)' is not downloaded."
+                    + " Run 'swiftwhisper download \(model.rawValue)' first."
+            )
+        }
+        let bundle = try await downloader.bundle(for: model)
+        let context = try WhisperCppContext(ggmlModelURL: bundle.ggmlModelURL)
+
+        var options = DecodingOptions.default
+        options.language = language
+
+        let formatter = SegmentFormatters.make(format)
+        let isBatch = audioFiles.count > 1
+
+        let destination: OutputDestination
+        if let output {
+            destination = try OutputDestination.file(at: output, noClobber: noClobber)
+        } else {
+            destination = .stdout()
+        }
+        defer { destination.close() }
+
+        let perFile: [(path: String, segments: [TranscriptionSegment])]
+        if concurrency > 1 && audioFiles.count > 1 {
+            perFile = try await collectAllParallel(
+                files: audioFiles,
+                concurrency: concurrency,
+                context: context,
+                options: options
+            )
+        } else {
+            perFile = try await collectAllSequential(
+                files: audioFiles,
+                context: context,
+                options: options
+            )
+        }
+
+        if formatter.bufferingRequired {
+            try emitBuffered(
+                perFile: perFile,
+                formatter: formatter,
+                isBatch: isBatch,
+                destination: destination
+            )
+        } else {
+            emitStreaming(
+                perFile: perFile,
+                formatter: formatter,
+                isBatch: isBatch,
+                destination: destination
+            )
+        }
     }
 
-    // MARK: - Sequential collection (current behaviour)
+    // MARK: - Sequential collection
 
     private func collectAllSequential(
         files: [String],
-        tokenizer: WhisperTokenizer,
-        encoder: WhisperEncoder,
-        decoder: WhisperDecoder,
+        context: WhisperCppContext,
         options: DecodingOptions
     ) async throws -> [(path: String, segments: [TranscriptionSegment])] {
         var collected: [(path: String, segments: [TranscriptionSegment])] = []
@@ -107,11 +169,9 @@ struct TranscribeCommand: AsyncParsableCommand {
             if files.count > 1 {
                 writeStderr("[\(index)/\(files.count) done] processing \(path)...\n")
             }
-            let segments = try await collectSegments(
+            let segments = try await Self.collectSegmentsStatic(
                 path: path,
-                tokenizer: tokenizer,
-                encoder: encoder,
-                decoder: decoder,
+                context: context,
                 options: options
             )
             collected.append((path: path, segments: segments))
@@ -127,9 +187,7 @@ struct TranscribeCommand: AsyncParsableCommand {
     private func collectAllParallel(
         files: [String],
         concurrency: Int,
-        tokenizer: WhisperTokenizer,
-        encoder: WhisperEncoder,
-        decoder: WhisperDecoder,
+        context: WhisperCppContext,
         options: DecodingOptions
     ) async throws -> [(path: String, segments: [TranscriptionSegment])] {
         let tasksLimit = max(1, min(concurrency, files.count))
@@ -146,9 +204,7 @@ struct TranscribeCommand: AsyncParsableCommand {
                 group.addTask {
                     let segments = try await Self.collectSegmentsStatic(
                         path: path,
-                        tokenizer: tokenizer,
-                        encoder: encoder,
-                        decoder: decoder,
+                        context: context,
                         options: options
                     )
                     let done = await counter.completed(path: path)
@@ -168,9 +224,7 @@ struct TranscribeCommand: AsyncParsableCommand {
                     group.addTask {
                         let segments = try await Self.collectSegmentsStatic(
                             path: path,
-                            tokenizer: tokenizer,
-                            encoder: encoder,
-                            decoder: decoder,
+                            context: context,
                             options: options
                         )
                         let done = await counter.completed(path: path)
@@ -237,57 +291,45 @@ struct TranscribeCommand: AsyncParsableCommand {
 
     // MARK: - Per-file pipeline
 
-    private func collectSegments(
-        path: String,
-        tokenizer: WhisperTokenizer,
-        encoder: WhisperEncoder,
-        decoder: WhisperDecoder,
-        options: DecodingOptions
-    ) async throws -> [TranscriptionSegment] {
-        try await Self.collectSegmentsStatic(
-            path: path,
-            tokenizer: tokenizer,
-            encoder: encoder,
-            decoder: decoder,
-            options: options
-        )
-    }
-
+    /// Reads an audio file, transcribes it via `WhisperCppContext`, and returns
+    /// the resulting segments.
     nonisolated static func collectSegmentsStatic(
         path: String,
-        tokenizer: WhisperTokenizer,
-        encoder: WhisperEncoder,
-        decoder: WhisperDecoder,
+        context: WhisperCppContext,
         options: DecodingOptions
     ) async throws -> [TranscriptionSegment] {
         let url = URL(fileURLWithPath: path)
-        let melSpectrogram = try MelSpectrogram()
-        let vad = EnergyVAD()
-        let policy = LocalAgreementPolicy()
-        let audioInput = AudioFileInput(fileURL: url)
-        let pipeline = TranscriptionPipeline(
-            audioInput: audioInput,
-            vad: vad,
-            melSpectrogram: melSpectrogram,
-            encoder: encoder,
-            decoder: decoder,
-            tokenizer: tokenizer,
-            policy: policy,
-            options: options
-        )
+        let samples = try await readAllSamples(at: url)
+        return try await context.transcribe(samples: samples, options: options)
+    }
 
-        let stream = try await pipeline.start()
-        let collector = SegmentCollector()
-        let consumer = Task { [collector] in
-            for await segment in stream {
-                await collector.append(segment)
-            }
+    /// Drains an audio file into an in-memory `[Float]` at 16 kHz mono.
+    nonisolated static func readAllSamples(at url: URL) async throws -> [Float] {
+        let (chunkStream, chunkContinuation) = AsyncStream<[Float]>.makeStream()
+        let input = AudioFileInput(fileURL: url)
+
+        // Start emitting chunks into the stream as soon as start() yields them.
+        // onChunk is @Sendable @escaping but synchronous, so we can yield directly.
+        try await input.start(
+            targetSampleRate: 16_000,
+            bufferDurationSeconds: 1.0
+        ) { @Sendable samples in
+            chunkContinuation.yield(samples)
         }
 
-        await audioInput.waitUntilComplete()
-        await pipeline.stop()
-        await consumer.value
-        return await collector.snapshot()
+        // Wait for EOF on a separate Task so we can finish the stream
+        // and let the for-await loop terminate.
+        Task {
+            await input.waitUntilComplete()
+            await input.stop()
+            chunkContinuation.finish()
+        }
+
+        var samples: [Float] = []
+        for await chunk in chunkStream {
+            samples.append(contentsOf: chunk)
+        }
+        return samples
     }
 }
 
@@ -330,6 +372,7 @@ actor SegmentCollector {
     func snapshot() -> [TranscriptionSegment] {
         segments
     }
+
 }
 
 /// Tracks how many files in a parallel batch have completed. Used solely to
