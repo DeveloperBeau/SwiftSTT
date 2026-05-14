@@ -140,7 +140,17 @@ public actor ModelDownloader {
     ///
     /// This does not check network reachability; the caller is responsible
     /// for gating on connectivity and retrying.
-    public func downloadCoreMLEncoder(_ model: WhisperModel) async throws(SwiftWhisperError) {
+    ///
+    /// - Parameters:
+    ///   - model: the model whose Core ML encoder to fetch.
+    ///   - onProgress: optional callback with `(bytesWritten, bytesExpected)`
+    ///     as the zip downloads.
+    /// - Throws: ``SwiftWhisperError/modelDownloadFailed(_:)`` on a network,
+    ///   HTTP, or unpack failure.
+    public func downloadCoreMLEncoder(
+        _ model: WhisperModel,
+        onProgress: (@Sendable (Int64, Int64) -> Void)? = nil
+    ) async throws(SwiftWhisperError) {
         if hasCoreMLEncoder(model) { return }
 
         let dir = cacheDirectory(for: model)
@@ -155,13 +165,24 @@ public actor ModelDownloader {
             }
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
-            let (tempZip, response) = try await urlSession.download(from: url)
-            guard let http = response as? HTTPURLResponse,
-                (200..<300).contains(http.statusCode)
-            else {
-                let code = (response as? HTTPURLResponse)?.statusCode ?? -1
-                throw SwiftWhisperError.modelDownloadFailed("\(zipName) returned HTTP \(code)")
+            // Same session-delegate download path as the ggml file, so the
+            // encoder zip reports incremental byte progress too.
+            let zipDest = dir.appendingPathComponent("\(model.fileStem)-encoder.zip.partial")
+            let delegate = DownloadDelegate(destination: zipDest) { written, expected in
+                onProgress?(written, expected)
             }
+            let session = URLSession(
+                configuration: urlSession.configuration,
+                delegate: delegate,
+                delegateQueue: nil
+            )
+            defer { session.finishTasksAndInvalidate() }
+
+            let tempZip: URL = try await withCheckedThrowingContinuation { cont in
+                delegate.onFinish = { result in cont.resume(with: result) }
+                session.downloadTask(with: url).resume()
+            }
+            defer { try? FileManager.default.removeItem(at: tempZip) }
 
             // Unzip into a scratch dir, then move the .mlmodelc into place.
             let scratch = dir.appendingPathComponent(
@@ -282,36 +303,38 @@ public actor ModelDownloader {
         }
         let destURL = dir.appendingPathComponent("\(stem).bin")
 
+        // A model "download" is two files: the ggml weights and the optional
+        // Core ML encoder. They are reported as one combined progress stream.
+        // The encoder zip runs roughly a fifth of the ggml size; the exact
+        // figure isn't known up front, so an estimate sizes the bar.
+        let ggmlBytes = model.approximateSizeBytes
+        let encoderBytes = model.approximateSizeBytes / 5
+        let combinedBytes = ggmlBytes + encoderBytes
+        let ggmlName = "\(stem).bin"
+        let encoderName = "\(stem)-encoder.mlmodelc"
+
         continuation.yield(
             DownloadProgress(
-                totalFiles: 1, completedFiles: 0,
-                totalBytes: model.approximateSizeBytes, totalBytesDownloaded: 0,
-                currentFile: "\(stem).bin",
+                totalFiles: 2, completedFiles: 0,
+                totalBytes: combinedBytes, totalBytesDownloaded: 0,
+                currentFile: ggmlName,
                 phase: .downloading
             )
         )
 
-        // A *session-level* delegate on a plain (non-completion-handler)
-        // download task gets reliable incremental `didWriteData` callbacks.
-        // The completion-handler download form suppresses them, which is why
-        // progress used to jump straight 0% to 100%. The dedicated session
-        // is built from the injected session's configuration so test
-        // URLProtocol mocks still apply.
-        let approxBytes = model.approximateSizeBytes
-        let fileName = "\(stem).bin"
+        // The ggml weights. A *session-level* delegate on a plain (non-
+        // completion-handler) download task gets reliable incremental
+        // `didWriteData` callbacks. The dedicated session is built from the
+        // injected session's configuration so test URLProtocol mocks apply.
         let partialURL = dir.appendingPathComponent("\(stem).bin.partial")
-
         let delegate = DownloadDelegate(destination: partialURL) {
-            totalBytesWritten, totalBytesExpectedToWrite in
-            let total =
-                totalBytesExpectedToWrite > 0
-                ? totalBytesExpectedToWrite
-                : max(approxBytes, totalBytesWritten)
+            totalBytesWritten, _ in
             continuation.yield(
                 DownloadProgress(
-                    totalFiles: 1, completedFiles: 0,
-                    totalBytes: total, totalBytesDownloaded: totalBytesWritten,
-                    currentFile: fileName,
+                    totalFiles: 2, completedFiles: 0,
+                    totalBytes: combinedBytes,
+                    totalBytesDownloaded: min(totalBytesWritten, ggmlBytes),
+                    currentFile: ggmlName,
                     phase: .downloading
                 )
             )
@@ -327,24 +350,48 @@ public actor ModelDownloader {
             delegate.onFinish = { result in cont.resume(with: result) }
             session.downloadTask(with: url).resume()
         }
-
         try moveDownloaded(from: tempURL, to: destURL)
 
-        let size: Int64 =
-            (try? FileManager.default.attributesOfItem(atPath: destURL.path)[.size] as? Int64)
-            ?? 0
+        // The Core ML encoder. Best-effort: the ggml model is fully usable
+        // without it (whisper.cpp falls back to its built-in encoder), so a
+        // failure here does not fail the download. `ModelManager` retries
+        // any missing encoder on a later launch.
         continuation.yield(
             DownloadProgress(
-                totalFiles: 1, completedFiles: 1,
-                totalBytes: size, totalBytesDownloaded: size,
+                totalFiles: 2, completedFiles: 1,
+                totalBytes: combinedBytes, totalBytesDownloaded: ggmlBytes,
+                currentFile: encoderName,
+                phase: .downloading
+            )
+        )
+        do {
+            try await downloadCoreMLEncoder(model) { written, _ in
+                continuation.yield(
+                    DownloadProgress(
+                        totalFiles: 2, completedFiles: 1,
+                        totalBytes: combinedBytes,
+                        totalBytesDownloaded: ggmlBytes + min(written, encoderBytes),
+                        currentFile: encoderName,
+                        phase: .downloading
+                    )
+                )
+            }
+        } catch {
+            // Best-effort — keep the ggml model; the encoder is a bonus.
+        }
+
+        continuation.yield(
+            DownloadProgress(
+                totalFiles: 2, completedFiles: 2,
+                totalBytes: combinedBytes, totalBytesDownloaded: combinedBytes,
                 phase: .verifying
             )
         )
         FileManager.default.createFile(atPath: markerPath(for: model).path, contents: nil)
         continuation.yield(
             DownloadProgress(
-                totalFiles: 1, completedFiles: 1,
-                totalBytes: size, totalBytesDownloaded: size,
+                totalFiles: 2, completedFiles: 2,
+                totalBytes: combinedBytes, totalBytesDownloaded: combinedBytes,
                 phase: .complete
             )
         )
