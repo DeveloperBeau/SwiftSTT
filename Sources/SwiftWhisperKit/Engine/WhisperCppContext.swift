@@ -59,28 +59,58 @@ public actor WhisperCppContext {
     /// the actor's executor thread for its full duration (typically 1-5
     /// seconds for tiny.en, longer for bigger models). Callers should
     /// not invoke this from a `@MainActor` context.
+    ///
+    /// - Parameters:
+    ///   - samples: 16 kHz mono Float32 PCM audio.
+    ///   - options: decoding options; language, task, temperature, etc.
+    ///   - onProgress: optional callback invoked with a fractional progress
+    ///     value (0.0...1.0) as whisper.cpp decodes. It fires synchronously
+    ///     on the executor thread running `whisper_full`, so keep it cheap
+    ///     (e.g. hop to another actor with a `Task`).
+    /// - Returns: the transcribed segments, empty if `samples` is empty.
+    /// - Throws: ``SwiftWhisperError/decoderFailure(_:)`` if `whisper_full`
+    ///   returns a non-zero status.
     public func transcribe(
         samples: [Float],
-        options: DecodingOptions = .default
+        options: DecodingOptions = .default,
+        onProgress: (@Sendable (Double) -> Void)? = nil
     ) throws(SwiftWhisperError) -> [TranscriptionSegment] {
         guard !samples.isEmpty else { return [] }
 
         var params = WhisperCppParams.fullParams(from: options)
+
+        // Wire whisper.cpp's C progress callback (0-100) to `onProgress`.
+        // The box is held for the duration of `whisper_full` via
+        // `withExtendedLifetime`; the C callback reads it back through
+        // `progress_callback_user_data`.
+        let progressBox = onProgress.map(ProgressBox.init)
+        if let progressBox {
+            params.progress_callback = { _, _, progress, userData in
+                guard let userData else { return }
+                Unmanaged<ProgressBox>.fromOpaque(userData)
+                    .takeUnretainedValue()
+                    .callback(Double(progress) / 100.0)
+            }
+            params.progress_callback_user_data =
+                Unmanaged.passUnretained(progressBox).toOpaque()
+        }
 
         // `language` needs a stable C string for the duration of the call.
         let languageCString: ContiguousArray<CChar>? = options.language.map { lang in
             ContiguousArray(lang.utf8CString)
         }
 
-        let rc = samples.withUnsafeBufferPointer { audioPtr -> Int32 in
-            languageCString.withCStringOrNil { langPtr in
-                params.language = langPtr
-                return whisper_full(
-                    context,
-                    params,
-                    audioPtr.baseAddress,
-                    Int32(audioPtr.count)
-                )
+        let rc = withExtendedLifetime(progressBox) {
+            samples.withUnsafeBufferPointer { audioPtr -> Int32 in
+                languageCString.withCStringOrNil { langPtr in
+                    params.language = langPtr
+                    return whisper_full(
+                        context,
+                        params,
+                        audioPtr.baseAddress,
+                        Int32(audioPtr.count)
+                    )
+                }
             }
         }
         guard rc == 0 else {
@@ -119,5 +149,14 @@ extension Optional where Wrapped == ContiguousArray<CChar> {
                 body(buf.baseAddress)
             }
         }
+    }
+}
+
+/// Reference box that carries a progress closure across whisper.cpp's C
+/// `progress_callback_user_data` pointer.
+private final class ProgressBox: Sendable {
+    let callback: @Sendable (Double) -> Void
+    init(_ callback: @escaping @Sendable (Double) -> Void) {
+        self.callback = callback
     }
 }
