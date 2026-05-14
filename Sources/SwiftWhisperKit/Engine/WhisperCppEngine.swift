@@ -4,7 +4,7 @@ import SwiftWhisperCore
 
 private let engineLog = Logger(subsystem: "com.swiftwhisper", category: "WhisperCppEngine")
 
-/// TranscriptionEngine backed by whisper.cpp.
+/// WhisperTranscriptionEngine backed by whisper.cpp.
 ///
 /// Buffers PCM samples while recording; on stop, runs `whisper_full` once
 /// and emits segments. This is a record-then-transcribe engine. For live
@@ -15,17 +15,17 @@ private let engineLog = Logger(subsystem: "com.swiftwhisper", category: "Whisper
 /// Subscribers to ``statusStream()`` receive the current status on
 /// registration. Subscribers to ``segmentStream()`` receive only segments
 /// emitted after they subscribe.
-public actor WhisperCppEngine: TranscriptionEngine {
+public actor WhisperCppEngine: WhisperTranscriptionEngine {
 
     /// Factory closure that vends an ``AudioInputProvider`` for each recording session.
     public typealias AudioCaptureFactory = @Sendable () -> any AudioInputProvider
 
-    private let storage: DefaultModelStorage
+    private let storage: WhisperModelStorage
     private let audioFactory: AudioCaptureFactory
 
-    private var statusContinuations: [UUID: AsyncStream<EngineStatus>.Continuation] = [:]
+    private var statusContinuations: [UUID: AsyncStream<WhisperEngineStatus>.Continuation] = [:]
     private var segmentContinuations: [UUID: AsyncStream<TranscriptionSegment>.Continuation] = [:]
-    private var currentStatus: EngineStatus = .idle
+    private var currentStatus: WhisperEngineStatus = .idle
 
     private struct Loaded {
         let model: WhisperModel
@@ -41,7 +41,7 @@ public actor WhisperCppEngine: TranscriptionEngine {
 
     /// Creates a new engine with the given storage and audio input factory.
     public init(
-        storage: DefaultModelStorage = DefaultModelStorage(),
+        storage: WhisperModelStorage = WhisperModelStorage(),
         audioFactory: @escaping AudioCaptureFactory = { AVMicrophoneInput() }
     ) {
         self.storage = storage
@@ -51,7 +51,7 @@ public actor WhisperCppEngine: TranscriptionEngine {
     /// Returns a stream of engine lifecycle status updates.
     ///
     /// The current status is replayed to every new subscriber immediately on registration.
-    public nonisolated func statusStream() -> AsyncStream<EngineStatus> {
+    public nonisolated func statusStream() -> AsyncStream<WhisperEngineStatus> {
         AsyncStream { continuation in
             let id = UUID()
             Task { [weak self] in
@@ -82,7 +82,7 @@ public actor WhisperCppEngine: TranscriptionEngine {
 
     private func registerStatusContinuation(
         id: UUID,
-        continuation: AsyncStream<EngineStatus>.Continuation
+        continuation: AsyncStream<WhisperEngineStatus>.Continuation
     ) {
         statusContinuations[id] = continuation
         continuation.yield(currentStatus)
@@ -103,7 +103,7 @@ public actor WhisperCppEngine: TranscriptionEngine {
         segmentContinuations.removeValue(forKey: id)
     }
 
-    private func emitStatus(_ status: EngineStatus) {
+    private func emitStatus(_ status: WhisperEngineStatus) {
         currentStatus = status
         for (_, cont) in statusContinuations {
             cont.yield(status)
@@ -118,9 +118,9 @@ public actor WhisperCppEngine: TranscriptionEngine {
 
     /// Attempts to load the persisted default model into memory.
     ///
-    /// Emits ``EngineStatus/idle`` if no model is selected or not yet downloaded.
-    /// Emits ``EngineStatus/ready`` when the model is successfully loaded.
-    /// Emits ``EngineStatus/failed(_:)`` if loading fails.
+    /// Emits ``WhisperEngineStatus/idle`` if no model is selected or not yet downloaded.
+    /// Emits ``WhisperEngineStatus/ready`` when the model is successfully loaded.
+    /// Emits ``WhisperEngineStatus/failed(_:)`` if loading fails.
     public func prepare() async {
         guard !isPreparing else { return }
         isPreparing = true

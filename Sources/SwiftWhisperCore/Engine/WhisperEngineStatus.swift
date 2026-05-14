@@ -2,10 +2,10 @@ import Foundation
 
 /// Lifecycle status of a transcription engine.
 ///
-/// Engines surface their current state through ``TranscriptionEngine/statusStream()``.
+/// Engines surface their current state through ``WhisperTranscriptionEngine/statusStream()``.
 /// UI code observes the stream and renders splash/ready/listening affordances
 /// accordingly.
-public enum EngineStatus: Sendable, Equatable {
+public enum WhisperEngineStatus: Sendable, Equatable {
 
     /// No default model selected, or models not yet downloaded.
     case idle

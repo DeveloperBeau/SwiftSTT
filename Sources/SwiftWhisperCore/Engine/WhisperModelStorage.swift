@@ -7,7 +7,7 @@ import Foundation
 ///
 /// Reads and writes are not synchronised across processes; if both the
 /// CLI and the host app are running and both write, last-writer wins.
-public final class DefaultModelStorage: @unchecked Sendable {
+public final class WhisperModelStorage: @unchecked Sendable {
 
     private static let key = "SwiftWhisper.defaultModel"
     private let defaults: UserDefaults

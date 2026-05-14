@@ -9,14 +9,14 @@ import Foundation
 /// All methods are async because most implementations are actor-backed.
 /// Use ``prepare()`` after the persisted default model is known but
 /// before the user can tap record, to warm the model.
-public protocol TranscriptionEngine: Sendable {
+public protocol WhisperTranscriptionEngine: Sendable {
 
     /// Stream of engine lifecycle status.
     ///
     /// Each call returns a fresh `AsyncStream`. Implementers should yield
     /// the current status to a new subscriber as soon as it registers, so
     /// late subscribers don't miss the initial state.
-    func statusStream() -> AsyncStream<EngineStatus>
+    func statusStream() -> AsyncStream<WhisperEngineStatus>
 
     /// Stream of transcribed segments. Emits during or after a recording
     /// session, depending on the implementation.
@@ -25,11 +25,11 @@ public protocol TranscriptionEngine: Sendable {
     /// Begins loading the persisted default model into memory.
     ///
     /// Returns as soon as loading starts, not when it completes. The
-    /// actual outcome is delivered via ``statusStream()``: ``EngineStatus/preparing``
-    /// while loading, ``EngineStatus/ready`` on success, ``EngineStatus/failed``
-    /// on error, or ``EngineStatus/idle`` if no default is selected or the
+    /// actual outcome is delivered via ``statusStream()``: ``WhisperEngineStatus/preparing``
+    /// while loading, ``WhisperEngineStatus/ready`` on success, ``WhisperEngineStatus/failed``
+    /// on error, or ``WhisperEngineStatus/idle`` if no default is selected or the
     /// model is not yet downloaded. Callers must observe the stream and
-    /// wait for ``EngineStatus/ready`` before calling ``start()``, otherwise
+    /// wait for ``WhisperEngineStatus/ready`` before calling ``start()``, otherwise
     /// ``start()`` will throw.
     func prepare() async
 

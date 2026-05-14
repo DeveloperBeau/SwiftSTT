@@ -8,7 +8,7 @@ struct WhisperCppEngineTests {
 
     @Test("prepare emits .idle when no default model is set")
     func prepareIdle() async {
-        let storage = DefaultModelStorage(
+        let storage = WhisperModelStorage(
             defaults: UserDefaults(suiteName: UUID().uuidString)!
         )
         storage.model = nil
@@ -23,7 +23,7 @@ struct WhisperCppEngineTests {
 
     @Test("start throws when not prepared")
     func startWithoutPrepare() async {
-        let storage = DefaultModelStorage(
+        let storage = WhisperModelStorage(
             defaults: UserDefaults(suiteName: UUID().uuidString)!
         )
         storage.model = nil
@@ -43,7 +43,7 @@ struct WhisperCppEngineTests {
 
     @Test("stop is idempotent when not started")
     func stopIdempotent() async {
-        let storage = DefaultModelStorage(
+        let storage = WhisperModelStorage(
             defaults: UserDefaults(suiteName: UUID().uuidString)!
         )
         let engine = WhisperCppEngine(storage: storage)

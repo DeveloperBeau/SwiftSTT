@@ -68,7 +68,7 @@ struct TranscribeMicCommand: AsyncParsableCommand {
         // Point the engine's storage at the requested model for this session,
         // then restore it on exit so we don't clobber the user's persisted
         // default.
-        let storage = DefaultModelStorage()
+        let storage = WhisperModelStorage()
         let savedModel = storage.model
         storage.model = model
         defer { storage.model = savedModel }
