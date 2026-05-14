@@ -27,7 +27,15 @@ public actor WhisperCppContext {
         coreMLEncoderURL: URL? = nil
     ) throws(SwiftWhisperError) {
         var params = whisper_context_default_params()
+        // whisper.cpp's Metal backend crashes inside the iOS Simulator's
+        // Metal driver (ggml_metal_buffer_set_tensor hits an XPC shared-
+        // memory API misuse). Real devices handle Metal fine. Force the CPU
+        // backend on the simulator; everywhere else uses the GPU.
+        #if targetEnvironment(simulator)
+        params.use_gpu = false
+        #else
         params.use_gpu = true
+        #endif
 
         let path = ggmlModelURL.path
         guard
