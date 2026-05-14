@@ -2,11 +2,11 @@ import Foundation
 
 /// Paths to the components of a downloaded Whisper model.
 ///
-/// A bundle groups the encoder, decoder, and tokenizer URLs together so they
-/// can be passed around as a single value. Construction is a plain memberwise
-/// init with no file-system validation; the caller (typically
-/// `ModelDownloader.bundle(for:)`) is responsible for checking that the files
-/// exist before building one of these.
+/// Groups the ggml model file (and optional Core ML encoder) so they
+/// can be passed around as a single value. Construction performs no
+/// file-system validation; the caller (typically
+/// `ModelDownloader.bundle(for:)`) is responsible for checking that
+/// the files exist before building one.
 public struct ModelBundle: Sendable, Equatable {
 
     /// Which model variant this bundle represents.
@@ -15,27 +15,26 @@ public struct ModelBundle: Sendable, Equatable {
     /// Root directory where the model's files are cached.
     public let directory: URL
 
-    /// Path to the `AudioEncoder.mlmodelc` compiled model directory.
-    public let encoderURL: URL
+    /// Path to the ggml model file (e.g. `ggml-tiny.en.bin`).
+    public let ggmlModelURL: URL
 
-    /// Path to the `TextDecoder.mlmodelc` compiled model directory.
-    public let decoderURL: URL
-
-    /// Path to the `tokenizer.json` vocabulary file.
-    public let tokenizerURL: URL
+    /// Optional path to a Core ML encoder `.mlmodelc` directory.
+    ///
+    /// When present whisper.cpp uses it for the encoder step (much
+    /// faster on Apple Silicon). When `nil`, the ggml encoder runs
+    /// on CPU/Metal.
+    public let coreMLEncoderURL: URL?
 
     /// Creates a new ModelBundle with the supplied values.
     public init(
         model: WhisperModel,
         directory: URL,
-        encoderURL: URL,
-        decoderURL: URL,
-        tokenizerURL: URL
+        ggmlModelURL: URL,
+        coreMLEncoderURL: URL? = nil
     ) {
         self.model = model
         self.directory = directory
-        self.encoderURL = encoderURL
-        self.decoderURL = decoderURL
-        self.tokenizerURL = tokenizerURL
+        self.ggmlModelURL = ggmlModelURL
+        self.coreMLEncoderURL = coreMLEncoderURL
     }
 }
