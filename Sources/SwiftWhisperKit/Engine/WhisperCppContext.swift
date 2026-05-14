@@ -103,14 +103,12 @@ public actor WhisperCppContext {
                 guard count > 0 else { return }
                 let t1 = whisper_full_get_segment_t1_from_state(state, count - 1)
                 let fraction = min(max(Double(t1) / box.totalCentiseconds, 0), 1)
-                print("SWIFTSTT_PROGRESS new_segment count=\(count) t1=\(t1) frac=\(fraction)")
                 box.callback(fraction)
             }
             params.new_segment_callback_user_data = boxPointer
 
             params.progress_callback = { _, _, progress, userData in
                 guard let userData else { return }
-                print("SWIFTSTT_PROGRESS progress_callback progress=\(progress)")
                 Unmanaged<ProgressBox>.fromOpaque(userData)
                     .takeUnretainedValue()
                     .callback(Double(progress) / 100.0)
