@@ -199,28 +199,80 @@ public actor ModelDownloader {
             )
         )
 
+        // A *session-level* delegate receives `didWriteData` progress
+        // callbacks reliably; a task-specific delegate passed to the async
+        // `download(from:delegate:)` does not. We build a dedicated session
+        // from the injected session's configuration so test URLProtocol
+        // mocks still apply.
+        let approxBytes = model.approximateSizeBytes
+        let fileName = "\(stem).bin"
         let progressDelegate = ProgressDelegate { totalBytesWritten, totalBytesExpectedToWrite in
             let total =
                 totalBytesExpectedToWrite > 0
                 ? totalBytesExpectedToWrite
-                : max(model.approximateSizeBytes, totalBytesWritten)
+                : max(approxBytes, totalBytesWritten)
             continuation.yield(
                 DownloadProgress(
                     totalFiles: 1, completedFiles: 0,
                     totalBytes: total, totalBytesDownloaded: totalBytesWritten,
-                    currentFile: "\(stem).bin",
+                    currentFile: fileName,
                     phase: .downloading
                 )
             )
         }
-
-        let (tempURL, response) = try await urlSession.download(
-            from: url, delegate: progressDelegate
+        let session = URLSession(
+            configuration: urlSession.configuration,
+            delegate: progressDelegate,
+            delegateQueue: nil
         )
+        defer { session.finishTasksAndInvalidate() }
 
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            let code = (response as? HTTPURLResponse)?.statusCode ?? -1
-            throw SwiftWhisperError.modelDownloadFailed("\(stem).bin returned HTTP \(code)")
+        // Use the completion-handler download task. With this form the
+        // session delegate still receives `didWriteData` progress, but its
+        // `didFinishDownloadingTo` is *not* called: the completion handler
+        // owns the result instead. We move the temp file to a stable path
+        // inside the handler because the system deletes it on return.
+        let partialURL = dir.appendingPathComponent("\(stem).bin.partial")
+        let tempURL: URL = try await withCheckedThrowingContinuation { cont in
+            let task = session.downloadTask(with: url) { downloadedURL, response, error in
+                if let error {
+                    cont.resume(
+                        throwing: SwiftWhisperError.modelDownloadFailed(error.localizedDescription)
+                    )
+                    return
+                }
+                guard let downloadedURL else {
+                    cont.resume(
+                        throwing: SwiftWhisperError.modelDownloadFailed("no file at completion")
+                    )
+                    return
+                }
+                guard let http = response as? HTTPURLResponse,
+                    (200..<300).contains(http.statusCode)
+                else {
+                    let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+                    cont.resume(
+                        throwing: SwiftWhisperError.modelDownloadFailed(
+                            "\(fileName) returned HTTP \(code)"
+                        )
+                    )
+                    return
+                }
+                do {
+                    if FileManager.default.fileExists(atPath: partialURL.path) {
+                        try FileManager.default.removeItem(at: partialURL)
+                    }
+                    try FileManager.default.moveItem(at: downloadedURL, to: partialURL)
+                    cont.resume(returning: partialURL)
+                } catch {
+                    cont.resume(
+                        throwing: SwiftWhisperError.modelDownloadFailed(
+                            "staging failed: \(error.localizedDescription)"
+                        )
+                    )
+                }
+            }
+            task.resume()
         }
 
         try moveDownloaded(from: tempURL, to: destURL)
@@ -304,6 +356,7 @@ private final class ProgressDelegate: NSObject, URLSessionDownloadDelegate, @unc
         downloadTask: URLSessionDownloadTask,
         didFinishDownloadingTo location: URL
     ) {
-        // Handled by the async download(from:delegate:) call's tempURL return.
+        // Not called: the completion-handler download task owns the result.
+        // Required by the URLSessionDownloadDelegate protocol regardless.
     }
 }
