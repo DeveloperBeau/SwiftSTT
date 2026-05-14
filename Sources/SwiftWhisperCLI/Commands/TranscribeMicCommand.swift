@@ -1,5 +1,4 @@
 import ArgumentParser
-@preconcurrency import CoreML
 import Foundation
 import SwiftWhisperCore
 import SwiftWhisperKit
@@ -19,6 +18,8 @@ import SwiftWhisperKit
 /// sbv). Buffered formats (json, ttml) flush only at shutdown.
 ///
 /// `-o, --output <path>` writes the transcript to a file instead of stdout.
+///
+/// TODO(Task 8): Rewrite to use `WhisperCppEngine` directly.
 struct TranscribeMicCommand: AsyncParsableCommand {
 
     static let configuration = CommandConfiguration(
@@ -57,109 +58,12 @@ struct TranscribeMicCommand: AsyncParsableCommand {
     var cacheDir: String?
 
     func run() async throws {
-        let downloader = ModelDownloader(cacheDirectory: CacheDirectoryOption.resolve(cacheDir))
-        guard await downloader.isDownloaded(model) else {
-            throw ValidationError(
-                "model '\(model.rawValue)' is not downloaded. Run 'swiftwhisper download \(model.rawValue)' first."
-            )
-        }
-        let bundle = try await downloader.bundle(for: model)
-
-        let loader = ModelLoader()
-        let loaded = try await loader.loadBundle(bundle)
-        let tokenizer = try WhisperTokenizer(contentsOf: loaded.tokenizerURL)
-        let encoder = WhisperEncoder(runner: MLModelRunner(model: loaded.encoder))
-        let decoder = WhisperDecoder(
-            runner: MLStateModelRunner(model: loaded.decoder),
-            tokenizer: tokenizer
+        // TODO(Task 8): Rewrite this command to use WhisperCppEngine directly.
+        // The Core ML pipeline (ModelLoader, WhisperEncoder, WhisperDecoder) has been
+        // removed. Task 8 will replace this body with a whisper.cpp-based implementation.
+        throw ValidationError(
+            "transcribe-mic requires the Task 8 rewrite. Use 'swiftwhisper transcribe' for now."
         )
-        let melSpectrogram = try MelSpectrogram()
-        let vad = EnergyVAD()
-        let policy = LocalAgreementPolicy()
-
-        var options = DecodingOptions.default
-        options.language = language
-
-        let audioInput = AVMicrophoneInput()
-        let pipeline = TranscriptionPipeline(
-            audioInput: audioInput,
-            vad: vad,
-            melSpectrogram: melSpectrogram,
-            encoder: encoder,
-            decoder: decoder,
-            tokenizer: tokenizer,
-            policy: policy,
-            options: options
-        )
-
-        let formatter = SegmentFormatters.make(format)
-        let buffering = formatter.bufferingRequired
-        let collector = SegmentCollector()
-
-        let destination: OutputDestination
-        if let output {
-            destination = try OutputDestination.file(at: output, noClobber: noClobber)
-        } else {
-            destination = .stdout()
-        }
-        defer { destination.close() }
-
-        SignalHandler.reset()
-        SignalHandler.installSIGINT()
-        defer { SignalHandler.uninstallSIGINT() }
-
-        if let header = formatter.header() {
-            destination.writeLine(header)
-        }
-
-        writeStderr("Listening. Press Ctrl+C to stop.\n")
-
-        let stream: AsyncStream<TranscriptionSegment>
-        do {
-            stream = try await pipeline.start()
-        } catch SwiftWhisperError.micPermissionDenied {
-            Self.printPermissionGuidance()
-            throw ExitCode(Self.permissionDeniedExitCode)
-        } catch {
-            throw ValidationError("microphone start failed: \(error)")
-        }
-
-        let consumer = Task { [collector, formatter] in
-            var index = 0
-            for await segment in stream {
-                if buffering {
-                    await collector.append(segment)
-                } else {
-                    let line = formatter.format(segment: segment, index: index)
-                    if !line.isEmpty {
-                        destination.writeLine(line)
-                    }
-                    index += 1
-                }
-            }
-        }
-
-        let watchdog = Task {
-            await Self.watchUntilStop(maxDuration: maxDuration)
-        }
-
-        await watchdog.value
-        await pipeline.stop()
-        await consumer.value
-
-        if buffering {
-            let segments = await collector.snapshot()
-            if formatter is JSONFormatter {
-                if let payload = SegmentRendering.encodeJSON(
-                    perFile: [(path: "<microphone>", segments: segments)],
-                    isBatch: false
-                ) {
-                    destination.writeLine(payload)
-                }
-            } else if let body = formatter.footer(segments: segments) {
-                destination.writeLine(body)
-            }
-        }
     }
 
     /// `EX_NOPERM` from `sysexits.h`.
@@ -167,23 +71,8 @@ struct TranscribeMicCommand: AsyncParsableCommand {
     /// Distinct from the generic `1` so callers (e.g. shell scripts wrapping the CLI) can detect a permission failure.
     static let permissionDeniedExitCode: Int32 = 77
 
-    /// Polls ``SignalHandler/isStopRequested()`` every 100 ms and races it
-    /// against an optional `--max-duration` deadline.
-    ///
-    /// Returns when either fires.
-    private static func watchUntilStop(maxDuration: Double?) async {
-        let pollNs: UInt64 = 100_000_000
-        let deadline: Date? = maxDuration.map { Date().addingTimeInterval($0) }
-        while !SignalHandler.isStopRequested() {
-            if let deadline, Date() >= deadline { return }
-            try? await Task.sleep(nanoseconds: pollNs)
-        }
-    }
-
     /// Prints a multi-line guidance message to stderr describing how to grant
     /// microphone access on each platform.
-    ///
-    /// Called only on a confirmed `micPermissionDenied`.
     static func printPermissionGuidance() {
         writeStderr(
             """

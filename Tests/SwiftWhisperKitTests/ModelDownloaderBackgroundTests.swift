@@ -4,6 +4,11 @@ import Testing
 
 @testable import SwiftWhisperKit
 
+/// Tests for ModelDownloader background mode API surface.
+///
+/// Background download mode is deferred (Task 7 spec). These tests verify
+/// the current deferred-mode contracts: the API compiles, modes are
+/// distinguishable, and the public entry points return gracefully.
 @Suite("ModelDownloader background mode")
 struct ModelDownloaderBackgroundTests {
 
@@ -15,19 +20,17 @@ struct ModelDownloaderBackgroundTests {
         #expect(dir.path.contains(tmp.path))
     }
 
-    @Test("background init registers delegate under identifier")
-    func backgroundInitRegistersDelegate() async {
+    @Test("background init does not crash (deferred mode)")
+    func backgroundInitDoesNotCrash() async {
         let identifier = "swiftwhisper.test.\(UUID().uuidString)"
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let downloader = ModelDownloader(
             cacheDirectory: tmp, mode: .background(identifier: identifier))
-        defer { ModelDownloadDelegate.unregister(identifier: identifier) }
-
-        #expect(ModelDownloadDelegate.delegate(for: identifier) != nil)
-        _ = downloader
+        let dir = await downloader.cacheDirectory(for: .tiny)
+        #expect(dir.path.contains(tmp.path))
     }
 
-    @Test("Custom urlSession overrides background config")
+    @Test("Custom urlSession accepted in background mode (deferred)")
     func customSessionOverride() async {
         let identifier = "swiftwhisper.test.\(UUID().uuidString)"
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -37,35 +40,19 @@ struct ModelDownloaderBackgroundTests {
             mode: .background(identifier: identifier),
             urlSession: injected
         )
-        defer { ModelDownloadDelegate.unregister(identifier: identifier) }
-        _ = downloader
-        // The delegate is still registered so handleBackgroundEvents can route.
-        #expect(ModelDownloadDelegate.delegate(for: identifier) != nil)
+        let dir = await downloader.cacheDirectory(for: .tiny)
+        #expect(dir.path.contains(tmp.path))
     }
 
-    @Test("handleBackgroundEvents stashes completion for known identifier")
-    func handleBackgroundEventsStashes() async {
+    @Test("handleBackgroundEvents fires completion immediately (deferred mode)")
+    func handleBackgroundEventsFiresImmediately() async {
         let identifier = "swiftwhisper.test.\(UUID().uuidString)"
-        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let injected = URLSession(configuration: .ephemeral)
-        _ = ModelDownloader(
-            cacheDirectory: tmp,
-            mode: .background(identifier: identifier),
-            urlSession: injected
-        )
-        defer { ModelDownloadDelegate.unregister(identifier: identifier) }
-
         let counter = CounterBox()
         await ModelDownloader.handleBackgroundEvents(identifier: identifier) {
             counter.increment()
         }
-
-        // Counter should still be zero: the completion is stashed, not fired.
-        #expect(counter.value == 0)
-
-        // Drain completions and assert one was queued.
-        let stashed = ModelDownloadDelegate.delegate(for: identifier)?.drainCompletions() ?? []
-        #expect(stashed.count == 1)
+        // In deferred mode the completion fires immediately (no stashing).
+        #expect(counter.value == 1)
     }
 
     @Test("handleBackgroundEvents for unknown identifier fires completion immediately")
@@ -86,8 +73,8 @@ struct ModelDownloaderBackgroundTests {
         #expect(map.isEmpty)
     }
 
-    @Test("currentBackgroundDownloads returns empty when no tasks active")
-    func currentBackgroundDownloadsNoTasks() async {
+    @Test("currentBackgroundDownloads returns empty in deferred background mode")
+    func currentBackgroundDownloadsDeferred() async {
         let identifier = "swiftwhisper.test.\(UUID().uuidString)"
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let injected = URLSession(configuration: .ephemeral)
@@ -96,7 +83,6 @@ struct ModelDownloaderBackgroundTests {
             mode: .background(identifier: identifier),
             urlSession: injected
         )
-        defer { ModelDownloadDelegate.unregister(identifier: identifier) }
         let map = await downloader.currentBackgroundDownloads()
         #expect(map.isEmpty)
     }

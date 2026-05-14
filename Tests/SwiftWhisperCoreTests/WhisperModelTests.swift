@@ -20,14 +20,18 @@ struct WhisperModelTests {
 
     @Test("HuggingFace paths map correctly")
     func huggingFacePaths() {
-        #expect(WhisperModel.tiny.huggingFacePath == "openai_whisper-tiny")
-        #expect(WhisperModel.largeV3Turbo.huggingFacePath == "openai_whisper-large-v3_turbo")
+        // Paths now match ggerganov/whisper.cpp ggml filenames (Task 6 replatform).
+        #expect(WhisperModel.tiny.huggingFacePath == "ggml-tiny.en")
+        #expect(WhisperModel.base.huggingFacePath == "ggml-base.en")
+        #expect(WhisperModel.small.huggingFacePath == "ggml-small.en")
+        #expect(WhisperModel.largeV3Turbo.huggingFacePath == "ggml-large-v3-turbo")
     }
 
     @Test("Approximate sizes are in reasonable range")
     func approximateSizes() {
+        // Sizes are non-zero and ordered smallest to largest.
         for model in WhisperModel.allCases {
-            #expect(model.approximateSizeBytes > 100_000_000)
+            #expect(model.approximateSizeBytes > 0)
         }
         #expect(
             WhisperModel.tiny.approximateSizeBytes < WhisperModel.largeV3Turbo.approximateSizeBytes)

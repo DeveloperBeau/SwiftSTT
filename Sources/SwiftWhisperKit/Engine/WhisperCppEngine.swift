@@ -33,6 +33,7 @@ public actor WhisperCppEngine: TranscriptionEngine {
     }
 
     private var loaded: Loaded?
+    private var isPreparing = false
 
     private var audioInput: (any AudioInputProvider)?
     private var buffer: [Float] = []
@@ -118,8 +119,12 @@ public actor WhisperCppEngine: TranscriptionEngine {
     /// Attempts to load the persisted default model into memory.
     ///
     /// Emits ``EngineStatus/idle`` if no model is selected or not yet downloaded.
-    /// Full context loading is stubbed pending Task 6 (ggmlModelURL on ModelBundle).
+    /// Emits ``EngineStatus/ready`` when the model is successfully loaded.
+    /// Emits ``EngineStatus/failed(_:)`` if loading fails.
     public func prepare() async {
+        guard !isPreparing else { return }
+        isPreparing = true
+        defer { isPreparing = false }
         guard let model = storage.model else {
             emitStatus(.idle)
             return
@@ -129,10 +134,26 @@ public actor WhisperCppEngine: TranscriptionEngine {
             emitStatus(.idle)
             return
         }
-        // TODO(Task 6): after ModelBundle exposes ggmlModelURL, instantiate
-        // WhisperCppContext here. For now the engine cannot load a model;
-        // we emit .idle (not .failed) so consumers don't render an error state.
-        emitStatus(.idle)
+        if let cached = loaded, cached.model == model {
+            emitStatus(.ready)
+            return
+        }
+        loaded = nil
+        emitStatus(.preparing)
+        do {
+            let bundle = try await downloader.bundle(for: model)
+            let context = try WhisperCppContext(
+                ggmlModelURL: bundle.ggmlModelURL,
+                coreMLEncoderURL: bundle.coreMLEncoderURL
+            )
+            loaded = Loaded(model: model, context: context)
+            emitStatus(.ready)
+        } catch {
+            engineLog.error(
+                "prepare failed: \(String(describing: error), privacy: .private)"
+            )
+            emitStatus(.failed("Couldn't prepare the dictation model."))
+        }
     }
 
     /// Begins audio capture and buffering.

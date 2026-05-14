@@ -84,78 +84,12 @@ struct TranscribeCommand: AsyncParsableCommand {
     }
 
     func run() async throws {
-        if concurrency > 8 {
-            writeStderr(
-                "warning: --concurrency \(concurrency) is high; expect heavy memory and CPU pressure.\n"
-            )
-        }
-
-        let downloader = ModelDownloader(cacheDirectory: CacheDirectoryOption.resolve(cacheDir))
-        guard await downloader.isDownloaded(model) else {
-            throw ValidationError(
-                "model '\(model.rawValue)' is not downloaded. Run 'swiftwhisper download \(model.rawValue)' first."
-            )
-        }
-        let bundle = try await downloader.bundle(for: model)
-
-        let loader = ModelLoader()
-        let loaded = try await loader.loadBundle(bundle)
-        let tokenizer = try WhisperTokenizer(contentsOf: loaded.tokenizerURL)
-        let encoder = WhisperEncoder(runner: MLModelRunner(model: loaded.encoder))
-        let decoder = WhisperDecoder(
-            runner: MLStateModelRunner(model: loaded.decoder),
-            tokenizer: tokenizer
+        // TODO(Task 8): Rewrite this command to use WhisperCppEngine directly.
+        // The Core ML pipeline (ModelLoader, WhisperEncoder, WhisperDecoder) has been
+        // removed. Task 8 will replace this body with a whisper.cpp-based implementation.
+        throw ValidationError(
+            "transcribe requires the Task 8 rewrite."
         )
-
-        var options = DecodingOptions.default
-        options.language = language
-
-        let formatter = SegmentFormatters.make(format)
-        let isBatch = audioFiles.count > 1
-
-        let destination: OutputDestination
-        if let output {
-            destination = try OutputDestination.file(at: output, noClobber: noClobber)
-        } else {
-            destination = .stdout()
-        }
-        defer { destination.close() }
-
-        let perFile: [(path: String, segments: [TranscriptionSegment])]
-        if concurrency > 1 && audioFiles.count > 1 {
-            perFile = try await collectAllParallel(
-                files: audioFiles,
-                concurrency: concurrency,
-                tokenizer: tokenizer,
-                encoder: encoder,
-                decoder: decoder,
-                options: options
-            )
-        } else {
-            perFile = try await collectAllSequential(
-                files: audioFiles,
-                tokenizer: tokenizer,
-                encoder: encoder,
-                decoder: decoder,
-                options: options
-            )
-        }
-
-        if formatter.bufferingRequired {
-            try emitBuffered(
-                perFile: perFile,
-                formatter: formatter,
-                isBatch: isBatch,
-                destination: destination
-            )
-        } else {
-            emitStreaming(
-                perFile: perFile,
-                formatter: formatter,
-                isBatch: isBatch,
-                destination: destination
-            )
-        }
     }
 
     // MARK: - Sequential collection (current behaviour)

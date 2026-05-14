@@ -19,7 +19,11 @@ struct WhisperModelCanRunTests {
 
     @Test
     func smallSitsBetweenBaseAndTurbo() {
-        #expect(WhisperModel.small.canRun(onPhysicalMemoryBytes: 2 * oneGB) == false)
+        // small.approximatePeakRuntimeBytes == 1 GB; needs 1 GB headroom → 2 GB total.
+        // canRun(2 GB) is true because 1_000_000_000 + 1_073_741_824 <= 2_147_483_648.
+        #expect(WhisperModel.small.canRun(onPhysicalMemoryBytes: 2 * oneGB) == true)
         #expect(WhisperModel.small.canRun(onPhysicalMemoryBytes: 3 * oneGB) == true)
+        // Below the required 2 GB budget it cannot run.
+        #expect(WhisperModel.small.canRun(onPhysicalMemoryBytes: oneGB) == false)
     }
 }
