@@ -15,11 +15,14 @@ struct WhisperCppParamsTests {
         #expect(translate.translate == true)
     }
 
-    @Test("detect_language defaults true when language is nil")
+    @Test("detect_language is always false (it would exit without transcribing)")
     func detectLanguage() {
+        // `detect_language == true` makes whisper.cpp detect the language and
+        // return *without* transcribing. Auto-detection is driven by a nil
+        // `language` instead, so this flag must stay false regardless.
         let auto = WhisperCppParams.fullParams(from: DecodingOptions(language: nil))
         let english = WhisperCppParams.fullParams(from: DecodingOptions(language: "en"))
-        #expect(auto.detect_language == true)
+        #expect(auto.detect_language == false)
         #expect(english.detect_language == false)
     }
 

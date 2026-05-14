@@ -19,7 +19,11 @@ public enum WhisperCppParams {
         params.print_progress = false
         params.print_realtime = false
         params.print_timestamps = false
-        params.detect_language = (options.language == nil)
+        // `detect_language` means "detect the language and exit *without*
+        // transcribing" — it must stay false. Auto-detection is driven by
+        // `params.language` being nil/"auto" (set in WhisperCppContext),
+        // which detects the language *and* transcribes in it.
+        params.detect_language = false
         params.temperature = options.temperature
         params.suppress_blank = options.suppressBlank
         params.n_threads = Int32(min(ProcessInfo.processInfo.activeProcessorCount, 4))
