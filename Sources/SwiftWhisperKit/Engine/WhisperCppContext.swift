@@ -79,20 +79,40 @@ public actor WhisperCppContext {
 
         var params = WhisperCppParams.fullParams(from: options)
 
-        // Wire whisper.cpp's C progress callback (0-100) to `onProgress`.
-        // The box is held for the duration of `whisper_full` via
-        // `withExtendedLifetime`; the C callback reads it back through
-        // `progress_callback_user_data`.
-        let progressBox = onProgress.map(ProgressBox.init)
+        // Drive progress from *both* whisper.cpp callbacks. They measure the
+        // same thing — position through the audio — so they can't conflict;
+        // the consumer's monotonic guard simply takes whichever is further
+        // along. `new_segment_callback` works for sub-30s clips (each
+        // finished segment carries an absolute `t1` timestamp, so
+        // `t1 / totalDuration` is real fractional progress), while
+        // `progress_callback` ticks every 5% of audio position and fills in
+        // the gaps on longer clips. The box is held across `whisper_full`
+        // via `withExtendedLifetime` and read back through the user-data
+        // pointer.
+        let totalCentiseconds = Double(samples.count) / 16_000.0 * 100.0
+        let progressBox = onProgress.map {
+            ProgressBox(callback: $0, totalCentiseconds: totalCentiseconds)
+        }
         if let progressBox {
+            let boxPointer = Unmanaged.passUnretained(progressBox).toOpaque()
+
+            params.new_segment_callback = { _, state, _, userData in
+                guard let userData, let state else { return }
+                let box = Unmanaged<ProgressBox>.fromOpaque(userData).takeUnretainedValue()
+                let count = whisper_full_n_segments_from_state(state)
+                guard count > 0 else { return }
+                let t1 = whisper_full_get_segment_t1_from_state(state, count - 1)
+                box.callback(min(max(Double(t1) / box.totalCentiseconds, 0), 1))
+            }
+            params.new_segment_callback_user_data = boxPointer
+
             params.progress_callback = { _, _, progress, userData in
                 guard let userData else { return }
                 Unmanaged<ProgressBox>.fromOpaque(userData)
                     .takeUnretainedValue()
                     .callback(Double(progress) / 100.0)
             }
-            params.progress_callback_user_data =
-                Unmanaged.passUnretained(progressBox).toOpaque()
+            params.progress_callback_user_data = boxPointer
         }
 
         // `language` needs a stable C string for the duration of the call.
@@ -152,11 +172,15 @@ extension Optional where Wrapped == ContiguousArray<CChar> {
     }
 }
 
-/// Reference box that carries a progress closure across whisper.cpp's C
-/// `progress_callback_user_data` pointer.
+/// Reference box that carries a progress closure (and the total audio
+/// duration needed to turn a segment timestamp into a fraction) across
+/// whisper.cpp's C `new_segment_callback_user_data` pointer.
 private final class ProgressBox: Sendable {
     let callback: @Sendable (Double) -> Void
-    init(_ callback: @escaping @Sendable (Double) -> Void) {
+    let totalCentiseconds: Double
+
+    init(callback: @escaping @Sendable (Double) -> Void, totalCentiseconds: Double) {
         self.callback = callback
+        self.totalCentiseconds = totalCentiseconds
     }
 }
