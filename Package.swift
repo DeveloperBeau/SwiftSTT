@@ -27,6 +27,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.4.0"),
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
+        .package(url: "https://github.com/weichsel/ZIPFoundation", from: "0.9.0"),
     ],
     targets: [
         .binaryTarget(
@@ -40,7 +41,11 @@ let package = Package(
         ),
         .target(
             name: "SwiftWhisperKit",
-            dependencies: ["SwiftWhisperCore", "WhisperCpp"],
+            dependencies: [
+                "SwiftWhisperCore",
+                "WhisperCpp",
+                .product(name: "ZIPFoundation", package: "ZIPFoundation"),
+            ],
             swiftSettings: upcoming
         ),
         .executableTarget(

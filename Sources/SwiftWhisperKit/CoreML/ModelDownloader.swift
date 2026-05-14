@@ -1,5 +1,6 @@
 import Foundation
 import SwiftWhisperCore
+import ZIPFoundation
 
 /// Downloads a single ggml Whisper model file from HuggingFace and caches it locally.
 ///
@@ -109,6 +110,94 @@ public actor ModelDownloader {
             ggmlModelURL: ggmlURL,
             coreMLEncoderURL: nil
         )
+    }
+
+    // MARK: - Core ML encoder
+
+    /// On-disk path where the Core ML encoder for `model` lives once
+    /// downloaded.
+    ///
+    /// whisper.cpp auto-loads this when it sits next to the ggml file with
+    /// the `<stem>-encoder.mlmodelc` name, so the encoder must live in the
+    /// same cache directory as `<stem>.bin`.
+    public func coreMLEncoderURL(for model: WhisperModel) -> URL {
+        cacheDirectory(for: model)
+            .appendingPathComponent("\(model.fileStem)-encoder.mlmodelc", isDirectory: true)
+    }
+
+    /// Whether the Core ML encoder for `model` has been downloaded and
+    /// unpacked.
+    public func hasCoreMLEncoder(_ model: WhisperModel) -> Bool {
+        FileManager.default.fileExists(atPath: coreMLEncoderURL(for: model).path)
+    }
+
+    /// Downloads and unpacks the Core ML encoder for `model`.
+    ///
+    /// Fetches `ggml-<stem>-encoder.mlmodelc.zip` from the ggerganov repo,
+    /// unzips it, and renames the extracted directory to
+    /// `<stem>-encoder.mlmodelc` so whisper.cpp's path derivation finds it
+    /// next to the ggml file. No-op if the encoder is already present.
+    ///
+    /// This does not check network reachability; the caller is responsible
+    /// for gating on connectivity and retrying.
+    public func downloadCoreMLEncoder(_ model: WhisperModel) async throws(SwiftWhisperError) {
+        if hasCoreMLEncoder(model) { return }
+
+        let dir = cacheDirectory(for: model)
+        let encoderURL = coreMLEncoderURL(for: model)
+        let zipName = "ggml-\(model.fileStem)-encoder.mlmodelc.zip"
+        let urlString =
+            "https://huggingface.co/\(WhisperModel.huggingFaceRepo)/resolve/main/\(zipName)"
+
+        do {
+            guard let url = URL(string: urlString) else {
+                throw SwiftWhisperError.modelDownloadFailed("invalid encoder URL: \(urlString)")
+            }
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+            let (tempZip, response) = try await urlSession.download(from: url)
+            guard let http = response as? HTTPURLResponse,
+                (200..<300).contains(http.statusCode)
+            else {
+                let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+                throw SwiftWhisperError.modelDownloadFailed("\(zipName) returned HTTP \(code)")
+            }
+
+            // Unzip into a scratch dir, then move the .mlmodelc into place.
+            let scratch = dir.appendingPathComponent(
+                "encoder-unzip-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: scratch) }
+
+            try FileManager.default.unzipItem(at: tempZip, to: scratch)
+
+            // The archive contains `ggml-<stem>-encoder.mlmodelc/`. Move it
+            // to the whisper.cpp-expected `<stem>-encoder.mlmodelc` name.
+            let expected = scratch.appendingPathComponent(
+                "ggml-\(model.fileStem)-encoder.mlmodelc", isDirectory: true)
+            let source: URL
+            if FileManager.default.fileExists(atPath: expected.path) {
+                source = expected
+            } else {
+                let contents =
+                    (try? FileManager.default.contentsOfDirectory(
+                        at: scratch, includingPropertiesForKeys: nil)) ?? []
+                guard let found = contents.first(where: { $0.pathExtension == "mlmodelc" }) else {
+                    throw SwiftWhisperError.modelDownloadFailed(
+                        "no .mlmodelc found inside \(zipName)")
+                }
+                source = found
+            }
+
+            if FileManager.default.fileExists(atPath: encoderURL.path) {
+                try FileManager.default.removeItem(at: encoderURL)
+            }
+            try FileManager.default.moveItem(at: source, to: encoderURL)
+        } catch let error as SwiftWhisperError {
+            throw error
+        } catch {
+            throw .modelDownloadFailed("encoder download failed: \(error.localizedDescription)")
+        }
     }
 
     /// Starts downloading a model.
