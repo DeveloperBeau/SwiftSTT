@@ -308,8 +308,8 @@ public actor ModelDownloader {
         // The encoder zip runs roughly a fifth of the ggml size; the exact
         // figure isn't known up front, so an estimate sizes the bar.
         let ggmlBytes = model.approximateSizeBytes
-        let encoderBytes = model.approximateSizeBytes / 5
-        let combinedBytes = ggmlBytes + encoderBytes
+        let encoderBytes = model.approximateEncoderSizeBytes
+        let combinedBytes = model.approximateDownloadSizeBytes
         let ggmlName = "\(stem).bin"
         let encoderName = "\(stem)-encoder.mlmodelc"
 
