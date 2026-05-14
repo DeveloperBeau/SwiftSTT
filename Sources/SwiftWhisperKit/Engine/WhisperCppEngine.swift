@@ -200,7 +200,9 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
             do {
                 let segments = try await cached.context.transcribe(
                     samples: pcm,
-                    options: DecodingOptions(language: "en")
+                    // Auto-detect language: the bundled/downloaded models
+                    // are multilingual.
+                    options: DecodingOptions()
                 )
                 for segment in segments {
                     emitSegment(segment)

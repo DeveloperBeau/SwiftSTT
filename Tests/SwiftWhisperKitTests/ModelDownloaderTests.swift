@@ -17,15 +17,15 @@ struct ModelDownloaderTests {
         #expect(result == false)
     }
 
-    @Test("Already-downloaded model: marker + ggml.bin present")
+    @Test("Already-downloaded model: marker + bin present")
     func alreadyDownloaded() async throws {
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(
             UUID().uuidString
         )
-        let dir = tmp.appendingPathComponent("ggml-tiny.en")
+        let dir = tmp.appendingPathComponent("tiny")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         FileManager.default.createFile(
-            atPath: dir.appendingPathComponent("ggml-tiny.en.bin").path,
+            atPath: dir.appendingPathComponent("tiny.bin").path,
             contents: Data("stub".utf8)
         )
         FileManager.default.createFile(

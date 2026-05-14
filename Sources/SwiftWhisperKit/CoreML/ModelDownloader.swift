@@ -73,18 +73,18 @@ public actor ModelDownloader {
 
     /// On-disk directory for a specific model variant.
     public func cacheDirectory(for model: WhisperModel) -> URL {
-        baseCacheDirectory.appendingPathComponent(model.huggingFacePath, isDirectory: true)
+        baseCacheDirectory.appendingPathComponent(model.fileStem, isDirectory: true)
     }
 
     /// Whether the model has been fully downloaded.
     ///
-    /// Verifies the `.complete` marker and that `ggml-<stem>.bin` exists. A
+    /// Verifies the `.complete` marker and that `<stem>.bin` exists. A
     /// marker without the binary (e.g. from an older incomplete download) is
     /// treated as not-downloaded so the next `download(_:)` call starts fresh.
     public func isDownloaded(_ model: WhisperModel) -> Bool {
         let fm = FileManager.default
         let dir = cacheDirectory(for: model)
-        let ggmlURL = dir.appendingPathComponent("\(model.huggingFacePath).bin")
+        let ggmlURL = dir.appendingPathComponent("\(model.fileStem).bin")
         let marker = markerPath(for: model)
         guard fm.fileExists(atPath: marker.path) else { return false }
         guard fm.fileExists(atPath: ggmlURL.path) else {
@@ -102,7 +102,7 @@ public actor ModelDownloader {
         guard isDownloaded(model) else {
             throw .modelFileMissing("model \(model.rawValue) not downloaded")
         }
-        let ggmlURL = dir.appendingPathComponent("\(model.huggingFacePath).bin")
+        let ggmlURL = dir.appendingPathComponent("\(model.fileStem).bin")
         return ModelBundle(
             model: model,
             directory: dir,
@@ -182,9 +182,12 @@ public actor ModelDownloader {
         let dir = cacheDirectory(for: model)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
-        let stem = model.huggingFacePath
+        // `ggmlFileName` is the upstream HF file (`ggml-tiny.bin`); the local
+        // copy uses the clean `fileStem` (`tiny.bin`).
+        let stem = model.fileStem
         let urlString =
-            "https://huggingface.co/\(WhisperModel.huggingFaceRepo)/resolve/main/\(stem).bin"
+            "https://huggingface.co/\(WhisperModel.huggingFaceRepo)/resolve/main/"
+            + model.ggmlFileName
         guard let url = URL(string: urlString) else {
             throw SwiftWhisperError.modelDownloadFailed("invalid URL: \(urlString)")
         }

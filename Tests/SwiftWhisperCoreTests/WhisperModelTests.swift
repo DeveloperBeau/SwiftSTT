@@ -18,13 +18,20 @@ struct WhisperModelTests {
         #expect(WhisperModel.largeV3Turbo.rawValue == "largeV3Turbo")
     }
 
-    @Test("HuggingFace paths map correctly")
-    func huggingFacePaths() {
-        // Paths now match ggerganov/whisper.cpp ggml filenames (Task 6 replatform).
-        #expect(WhisperModel.tiny.huggingFacePath == "ggml-tiny.en")
-        #expect(WhisperModel.base.huggingFacePath == "ggml-base.en")
-        #expect(WhisperModel.small.huggingFacePath == "ggml-small.en")
-        #expect(WhisperModel.largeV3Turbo.huggingFacePath == "ggml-large-v3-turbo")
+    @Test("File stems are clean local identifiers")
+    func fileStems() {
+        #expect(WhisperModel.tiny.fileStem == "tiny")
+        #expect(WhisperModel.base.fileStem == "base")
+        #expect(WhisperModel.small.fileStem == "small")
+        #expect(WhisperModel.largeV3Turbo.fileStem == "large-v3-turbo")
+    }
+
+    @Test("ggml file names map to the multilingual upstream files")
+    func ggmlFileNames() {
+        #expect(WhisperModel.tiny.ggmlFileName == "ggml-tiny.bin")
+        #expect(WhisperModel.base.ggmlFileName == "ggml-base.bin")
+        #expect(WhisperModel.small.ggmlFileName == "ggml-small.bin")
+        #expect(WhisperModel.largeV3Turbo.ggmlFileName == "ggml-large-v3-turbo.bin")
     }
 
     @Test("Approximate sizes are in reasonable range")

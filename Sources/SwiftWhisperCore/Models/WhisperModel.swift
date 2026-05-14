@@ -28,25 +28,41 @@ public enum WhisperModel: String, CaseIterable, Sendable, Identifiable {
     /// HuggingFace repository that hosts the ggml model files.
     public static let huggingFaceRepo = "ggerganov/whisper.cpp"
 
-    /// File stem (without `.bin`) used by ggerganov's repo.
+    /// Clean identifier for the local cache directory and on-disk file name.
     ///
-    /// Callers must append `.bin` when constructing a download URL.
-    public var huggingFacePath: String {
+    /// For example, `tiny` maps to `tiny/tiny.bin`. Deliberately does not
+    /// carry the `ggml-` prefix; that is an artifact of the upstream repo's
+    /// file naming, not something callers should see locally.
+    public var fileStem: String {
         switch self {
-        case .tiny: "ggml-tiny.en"
-        case .base: "ggml-base.en"
-        case .small: "ggml-small.en"
-        case .largeV3Turbo: "ggml-large-v3-turbo"
+        case .tiny: "tiny"
+        case .base: "base"
+        case .small: "small"
+        case .largeV3Turbo: "large-v3-turbo"
         }
     }
 
+    /// The exact file name published in the `ggerganov/whisper.cpp` HF repo.
+    ///
+    /// These are the multilingual variants (99 languages). The English-only
+    /// `.en` files are intentionally not used: at every size tier they are
+    /// the same byte size as the multilingual file and only trade language
+    /// coverage for marginally better English accuracy.
+    public var ggmlFileName: String {
+        "ggml-\(fileStem).bin"
+    }
+
     /// User-facing display name for the model.
+    ///
+    /// These are quality-ladder labels rather than the upstream Whisper
+    /// size names: a user picks by how good they want results, not by the
+    /// underlying parameter count.
     public var displayName: String {
         switch self {
         case .tiny: "Tiny"
-        case .base: "Base"
-        case .small: "Small"
-        case .largeV3Turbo: "Large V3 Turbo"
+        case .base: "Small"
+        case .small: "Default"
+        case .largeV3Turbo: "Best"
         }
     }
 

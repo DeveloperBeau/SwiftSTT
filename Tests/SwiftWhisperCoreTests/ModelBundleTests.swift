@@ -12,11 +12,11 @@ struct ModelBundleTests {
         let bundle = ModelBundle(
             model: .tiny,
             directory: dir,
-            ggmlModelURL: dir.appendingPathComponent("ggml-tiny.en.bin")
+            ggmlModelURL: dir.appendingPathComponent("tiny.bin")
         )
         #expect(bundle.model == .tiny)
         #expect(bundle.directory == dir)
-        #expect(bundle.ggmlModelURL.lastPathComponent == "ggml-tiny.en.bin")
+        #expect(bundle.ggmlModelURL.lastPathComponent == "tiny.bin")
         #expect(bundle.coreMLEncoderURL == nil)
     }
 
