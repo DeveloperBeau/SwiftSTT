@@ -7,7 +7,7 @@ private let engineLog = Logger(subsystem: "com.swiftwhisper", category: "Whisper
 /// TranscriptionEngine backed by whisper.cpp.
 ///
 /// Buffers PCM samples while recording; on stop, runs `whisper_full` once
-/// and emits segments. This is a record-then-transcribe engine — for live
+/// and emits segments. This is a record-then-transcribe engine. For live
 /// word-by-word streaming the implementation would need to call
 /// `whisper_full` on rolling windows. Current shape covers dictation,
 /// which is the only consumer.
@@ -187,7 +187,7 @@ public actor WhisperCppEngine: TranscriptionEngine {
 
     /// Stops audio capture, runs transcription on the buffered samples, and emits segments.
     ///
-    /// Idempotent — safe to call when not recording.
+    /// Idempotent: safe to call when not recording.
     public func stop() async {
         guard let input = audioInput else { return }  // truly idempotent: no-op
         captureToken = nil

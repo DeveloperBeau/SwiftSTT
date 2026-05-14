@@ -139,7 +139,7 @@ struct TranscribeMicCommand: AsyncParsableCommand {
         await engine.stop()
 
         // engine.stop() finishes the segment stream so consumer's
-        // for-await loop terminates naturally — wait for it.
+        // for-await loop terminates naturally; wait for it.
         await consumer.value
 
         if buffering {

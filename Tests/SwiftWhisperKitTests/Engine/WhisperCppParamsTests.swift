@@ -40,7 +40,7 @@ struct WhisperCppParamsTests {
     @Test("n_threads is set to a sane positive value")
     func nThreads() {
         let p = WhisperCppParams.fullParams(from: DecodingOptions())
-        // We deliberately cap at 4 threads — whisper.cpp documents this as the
+        // We deliberately cap at 4 threads. whisper.cpp documents this as the
         // sweet spot beyond which contention costs outweigh parallelism gains.
         #expect(p.n_threads > 0)
         #expect(p.n_threads <= 4)
