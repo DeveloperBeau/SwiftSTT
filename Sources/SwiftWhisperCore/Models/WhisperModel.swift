@@ -1,7 +1,7 @@
 import Foundation
 
-/// Available Whisper model sizes, matching the pre-converted Core ML models
-/// published by argmaxinc on HuggingFace.
+/// Available Whisper model sizes, matching the ggml model files published by
+/// ggerganov/whisper.cpp on HuggingFace.
 ///
 /// ## What this enum does not cover
 ///
@@ -25,67 +25,85 @@ public enum WhisperModel: String, CaseIterable, Sendable, Identifiable {
     /// Stable identifier for the model variant.
     public var id: String { rawValue }
 
-    /// HuggingFace repository that hosts the Core ML-converted models.
-    public static let huggingFaceRepo = "argmaxinc/whisperkit-coreml"
+    /// HuggingFace repository that hosts the ggml model files.
+    public static let huggingFaceRepo = "ggerganov/whisper.cpp"
 
-    /// Subdirectory name inside the HuggingFace repo for this model variant.
-    public var huggingFacePath: String {
+    /// Clean identifier for the local cache directory and on-disk file name.
+    ///
+    /// For example, `tiny` maps to `tiny/tiny.bin`. Deliberately does not
+    /// carry the `ggml-` prefix; that is an artifact of the upstream repo's
+    /// file naming, not something callers should see locally.
+    public var fileStem: String {
         switch self {
-        case .tiny: "openai_whisper-tiny"
-        case .base: "openai_whisper-base"
-        case .small: "openai_whisper-small"
-        case .largeV3Turbo: "openai_whisper-large-v3_turbo"
+        case .tiny: "tiny"
+        case .base: "base"
+        case .small: "small"
+        case .largeV3Turbo: "large-v3-turbo"
         }
     }
 
-    /// Direct download URL for the upstream OpenAI `tokenizer.json` for this
-    /// model variant. argmaxinc's Core ML repo does not ship tokenizer files,
-    /// so they have to be fetched from the original OpenAI HuggingFace repos.
-    public var tokenizerDownloadURL: URL {
-        let slug: String
-        switch self {
-        case .tiny: slug = "whisper-tiny"
-        case .base: slug = "whisper-base"
-        case .small: slug = "whisper-small"
-        case .largeV3Turbo: slug = "whisper-large-v3-turbo"
-        }
-        return URL(string: "https://huggingface.co/openai/\(slug)/resolve/main/tokenizer.json")!
+    /// The exact file name published in the `ggerganov/whisper.cpp` HF repo.
+    ///
+    /// These are the multilingual variants (99 languages). The English-only
+    /// `.en` files are intentionally not used: at every size tier they are
+    /// the same byte size as the multilingual file and only trade language
+    /// coverage for marginally better English accuracy.
+    public var ggmlFileName: String {
+        "ggml-\(fileStem).bin"
     }
 
     /// User-facing display name for the model.
+    ///
+    /// These are quality-ladder labels rather than the upstream Whisper
+    /// size names: a user picks by how good they want results, not by the
+    /// underlying parameter count.
     public var displayName: String {
         switch self {
         case .tiny: "Tiny"
-        case .base: "Base"
-        case .small: "Small"
-        case .largeV3Turbo: "Large V3 Turbo"
+        case .base: "Small"
+        case .small: "Default"
+        case .largeV3Turbo: "Best"
         }
     }
 
-    /// Rough download size in bytes.
-    ///
-    /// Useful for showing a size estimate before the user commits to downloading.
+    /// Rough size of the ggml weights file (`<stem>.bin`) in bytes.
     public var approximateSizeBytes: Int64 {
         switch self {
-        case .tiny: 150_000_000
-        case .base: 290_000_000
-        case .small: 580_000_000
-        case .largeV3Turbo: 800_000_000
+        case .tiny: 75_000_000
+        case .base: 145_000_000
+        case .small: 465_000_000
+        case .largeV3Turbo: 1_620_000_000
         }
+    }
+
+    /// Rough size of the optional Core ML encoder zip
+    /// (`<stem>-encoder.mlmodelc.zip`) in bytes, about a fifth of the
+    /// ggml file.
+    public var approximateEncoderSizeBytes: Int64 {
+        approximateSizeBytes / 5
+    }
+
+    /// Rough total of everything a model download fetches.
+    ///
+    /// That is the ggml weights plus the Core ML encoder; use this for the
+    /// pre-download size estimate shown to the user.
+    public var approximateDownloadSizeBytes: Int64 {
+        approximateSizeBytes + approximateEncoderSizeBytes
     }
 
     /// Approximate peak resident memory (in bytes) when the model is loaded
     /// and actively decoding.
     ///
-    /// The figure is roughly twice the on-disk size to account for the encoder activations and the decoder KV cache held by
-    /// `MLState`. Used by ``recommended(forPhysicalMemoryBytes:)`` to gate
+    /// whisper.cpp typically uses roughly 2–3× the on-disk ggml size at
+    /// runtime to account for KV cache and intermediate activations.
+    /// Used by ``recommended(forPhysicalMemoryBytes:)`` to gate
     /// suggestions on smaller devices.
     public var approximatePeakRuntimeBytes: Int64 {
         switch self {
-        case .tiny: 350_000_000
-        case .base: 600_000_000
-        case .small: 1_200_000_000
-        case .largeV3Turbo: 1_700_000_000
+        case .tiny: 200_000_000
+        case .base: 400_000_000
+        case .small: 1_000_000_000
+        case .largeV3Turbo: 3_200_000_000
         }
     }
 

@@ -41,9 +41,10 @@ struct InfoCommand: AsyncParsableCommand {
         if downloaded {
             do {
                 let bundle = try await downloader.bundle(for: model)
-                print("encoder:     \(bundle.encoderURL.path)")
-                print("decoder:     \(bundle.decoderURL.path)")
-                print("tokenizer:   \(bundle.tokenizerURL.path)")
+                print("ggml model:  \(bundle.ggmlModelURL.path)")
+                if let coreMLURL = bundle.coreMLEncoderURL {
+                    print("coreml:      \(coreMLURL.path)")
+                }
             } catch {
                 print("warning:     downloaded marker present but bundle is incomplete (\(error))")
             }

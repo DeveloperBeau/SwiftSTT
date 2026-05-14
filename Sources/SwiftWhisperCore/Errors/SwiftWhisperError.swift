@@ -15,8 +15,8 @@ public enum SwiftWhisperError: Error, Sendable, Equatable {
     /// controls, MDM policy, etc).
     case micPermissionDenied
 
-    /// A Core ML model could not be loaded from the given URL. The associated string
-    /// explains why (file missing, ANE compile failure, format mismatch).
+    /// A model could not be loaded from the given URL or path. The associated string
+    /// explains why (file missing, incompatible format, initialisation failure).
     case modelLoadFailed(String)
 
     /// `AVAudioConverter` refused to set up the requested format conversion. Usually
@@ -30,18 +30,6 @@ public enum SwiftWhisperError: Error, Sendable, Equatable {
     /// The decoder failed mid-generation. The associated string describes the failure
     /// (KV cache mismatch, NaN output, sampler error).
     case decoderFailure(String)
-
-    /// `MelSpectrogramResult` was built with `frames.count != nMels * nFrames`.
-    /// Carries the actual count and the count the layout requires.
-    case invalidMelDimensions(framesCount: Int, expected: Int)
-
-    /// `vDSP.DiscreteFourierTransform` rejected the requested setup. Carries the
-    /// underlying error string.
-    case fftSetupFailed(String)
-
-    /// `FFTProcessor.process` was called with a frame whose length doesn't match
-    /// the configured `frameLength`.
-    case fftFrameSizeMismatch(got: Int, expected: Int)
 
     /// An HTTP or network error prevented a model download from completing.
     case modelDownloadFailed(String)
@@ -77,12 +65,6 @@ extension SwiftWhisperError: LocalizedError {
             return "Audio capture failed: \(reason)"
         case .decoderFailure(let reason):
             return "Decoder failure: \(reason)"
-        case .invalidMelDimensions(let got, let expected):
-            return "Invalid mel dimensions: got \(got), expected \(expected)."
-        case .fftSetupFailed(let reason):
-            return "FFT setup failed: \(reason)"
-        case .fftFrameSizeMismatch(let got, let expected):
-            return "FFT frame size mismatch: got \(got), expected \(expected)."
         case .modelDownloadFailed(let reason):
             return "Model download failed: \(reason)"
         case .modelChecksumMismatch(let file):

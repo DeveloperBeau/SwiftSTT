@@ -18,16 +18,27 @@ struct WhisperModelTests {
         #expect(WhisperModel.largeV3Turbo.rawValue == "largeV3Turbo")
     }
 
-    @Test("HuggingFace paths map correctly")
-    func huggingFacePaths() {
-        #expect(WhisperModel.tiny.huggingFacePath == "openai_whisper-tiny")
-        #expect(WhisperModel.largeV3Turbo.huggingFacePath == "openai_whisper-large-v3_turbo")
+    @Test("File stems are clean local identifiers")
+    func fileStems() {
+        #expect(WhisperModel.tiny.fileStem == "tiny")
+        #expect(WhisperModel.base.fileStem == "base")
+        #expect(WhisperModel.small.fileStem == "small")
+        #expect(WhisperModel.largeV3Turbo.fileStem == "large-v3-turbo")
+    }
+
+    @Test("ggml file names map to the multilingual upstream files")
+    func ggmlFileNames() {
+        #expect(WhisperModel.tiny.ggmlFileName == "ggml-tiny.bin")
+        #expect(WhisperModel.base.ggmlFileName == "ggml-base.bin")
+        #expect(WhisperModel.small.ggmlFileName == "ggml-small.bin")
+        #expect(WhisperModel.largeV3Turbo.ggmlFileName == "ggml-large-v3-turbo.bin")
     }
 
     @Test("Approximate sizes are in reasonable range")
     func approximateSizes() {
+        // Sizes are non-zero and ordered smallest to largest.
         for model in WhisperModel.allCases {
-            #expect(model.approximateSizeBytes > 100_000_000)
+            #expect(model.approximateSizeBytes > 0)
         }
         #expect(
             WhisperModel.tiny.approximateSizeBytes < WhisperModel.largeV3Turbo.approximateSizeBytes)

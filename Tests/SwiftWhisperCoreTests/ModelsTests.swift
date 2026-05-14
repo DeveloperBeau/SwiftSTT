@@ -12,23 +12,6 @@ struct ModelsTests {
         #expect(a == b)
     }
 
-    @Test("MelSpectrogramResult valid dimensions")
-    func melSpectrogramFramesLength() throws {
-        let result = try MelSpectrogramResult(
-            frames: Array(repeating: 0, count: 80 * 100), nMels: 80, nFrames: 100)
-        #expect(result.frames.count == 80 * 100)
-    }
-
-    @Test("MelSpectrogramResult invalid dimensions throws")
-    func melSpectrogramInvalid() throws {
-        do {
-            _ = try MelSpectrogramResult(frames: [0, 0, 0], nMels: 2, nFrames: 5)
-            Issue.record("expected throw")
-        } catch {
-            #expect(error == .invalidMelDimensions(framesCount: 3, expected: 10))
-        }
-    }
-
     @Test("DecodingOptions defaults")
     func decodingOptionsDefaults() {
         let opts = DecodingOptions.default
