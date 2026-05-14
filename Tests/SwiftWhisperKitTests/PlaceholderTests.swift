@@ -6,9 +6,7 @@ import Testing
 struct PlaceholderTests {
 
     @Test("Kit target compiles")
-    func kitCompiles() throws {
+    func kitCompiles() {
         let _ = AudioConverter()
-        let _ = try FFTProcessor()
-        let _ = BPETokenizer()
     }
 }

@@ -56,12 +56,6 @@ The neural ``SileroVAD`` remains stubbed pending a Core ML conversion of the ups
 - ``StatefulCoreMLModelRunner``
 - ``MLStateModelRunner``
 
-### Sampling
-
-- ``RandomSource``
-- ``SystemRandom``
-- ``SeededRandom``
-
 ### Tokenizer
 
 - ``WhisperTokenizer``
