@@ -77,7 +77,7 @@ public enum WhisperModel: String, CaseIterable, Sendable, Identifiable {
     }
 
     /// Rough size of the optional Core ML encoder zip
-    /// (`<stem>-encoder.mlmodelc.zip`) in bytes — about a fifth of the
+    /// (`<stem>-encoder.mlmodelc.zip`) in bytes, about a fifth of the
     /// ggml file.
     public var approximateEncoderSizeBytes: Int64 {
         approximateSizeBytes / 5
@@ -85,7 +85,7 @@ public enum WhisperModel: String, CaseIterable, Sendable, Identifiable {
 
     /// Rough total of everything a model download fetches.
     ///
-    /// That is the ggml weights plus the Core ML encoder — use this for the
+    /// That is the ggml weights plus the Core ML encoder; use this for the
     /// pre-download size estimate shown to the user.
     public var approximateDownloadSizeBytes: Int64 {
         approximateSizeBytes + approximateEncoderSizeBytes

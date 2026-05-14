@@ -80,7 +80,7 @@ public actor WhisperCppContext {
         var params = WhisperCppParams.fullParams(from: options)
 
         // Drive progress from *both* whisper.cpp callbacks. They measure the
-        // same thing — position through the audio — so they can't conflict;
+        // same thing (position through the audio) so they can't conflict;
         // the consumer's monotonic guard simply takes whichever is further
         // along. `new_segment_callback` works for sub-30s clips (each
         // finished segment carries an absolute `t1` timestamp, so

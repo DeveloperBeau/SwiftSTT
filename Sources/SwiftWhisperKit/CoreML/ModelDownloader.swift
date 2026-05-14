@@ -377,7 +377,7 @@ public actor ModelDownloader {
                 )
             }
         } catch {
-            // Best-effort — keep the ggml model; the encoder is a bonus.
+            // Best-effort: keep the ggml model; the encoder is a bonus.
         }
 
         continuation.yield(

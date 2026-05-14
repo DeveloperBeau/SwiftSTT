@@ -20,7 +20,7 @@ public enum WhisperCppParams {
         params.print_realtime = false
         params.print_timestamps = false
         // `detect_language` means "detect the language and exit *without*
-        // transcribing" — it must stay false. Auto-detection is driven by
+        // transcribing", so it must stay false. Auto-detection is driven by
         // `params.language` being nil/"auto" (set in WhisperCppContext),
         // which detects the language *and* transcribes in it.
         params.detect_language = false
