@@ -1,6 +1,6 @@
 # SwiftWhisper
 
-Pure Swift 6, Core ML-native real-time speech-to-text. No C++ or Objective-C bridges.
+On-device speech-to-text for Apple platforms, built on whisper.cpp.
 
 [![CI](https://github.com/DeveloperBeau/SwiftSTT/actions/workflows/ci.yml/badge.svg)](https://github.com/DeveloperBeau/SwiftSTT/actions/workflows/ci.yml)
 [![Lint](https://github.com/DeveloperBeau/SwiftSTT/actions/workflows/lint.yml/badge.svg)](https://github.com/DeveloperBeau/SwiftSTT/actions/workflows/lint.yml)
@@ -10,27 +10,22 @@ Pure Swift 6, Core ML-native real-time speech-to-text. No C++ or Objective-C bri
 
 ## What it does
 
-SwiftWhisper transcribes audio to text on-device using OpenAI's Whisper model running on Core ML. It supports live microphone capture and pre-recorded files, streams confirmed segments as the model produces them, and runs the entire pipeline in pure Swift. Output formats cover plain text plus six subtitle and structured formats. Background-mode downloads keep large models pulling while the host app is suspended. The package ships 457 unit tests, all mock-driven, so CI runs in roughly 11 seconds without downloading model weights.
+SwiftWhisper transcribes audio to text on-device using OpenAI's Whisper models, running on [whisper.cpp](https://github.com/ggml-org/whisper.cpp) through a prebuilt xcframework. It captures from the microphone or reads pre-recorded files, then runs `whisper_full` once over the buffered audio and returns timestamped segments. The models are multilingual with automatic language detection. A `swiftwhisper` CLI covers transcription and model management across seven output formats; the library exposes the same engine for host apps. An optional Core ML encoder is downloaded alongside each model for extra on-device acceleration. The unit test suite is mock-driven, so CI runs without downloading model weights.
 
 ## Requirements
 
-- Swift 6.3
-- Xcode 16.x or newer
+- Swift 6.3 toolchain
 - iOS 18+ or macOS 15+
-- **A physical iOS device** for transcription. The iOS Simulator does not ship the MPSGraph backend that the argmaxinc Whisper Core ML models require for stateful decoding, so `MLModel.newState()` throws an uncatchable `NSInternalInconsistencyException` and the app crashes when the decoder allocates its KV cache. The Simulator is still fine for building, running the unit tests, and UI work that doesn't exercise the pipeline; for actual speech-to-text use a real iPhone or iPad. macOS hosts run fine.
 
-The iOS 18 / macOS 15 floor is set by `MLState`, which the decoder uses to hold the KV cache between forward passes. Earlier OS versions cannot run a stateful Core ML model.
+The iOS Simulator is supported, but whisper.cpp runs on its CPU backend there: the Metal backend crashes inside the Simulator's Metal driver, so the package forces `use_gpu = false` on the Simulator. Transcription works, just slower. Real iOS devices and macOS use the Metal GPU backend.
 
 ## Installation
 
 Add the package to your `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/DeveloperBeau/SwiftSTT.git", branch: "main"),
+.package(url: "https://github.com/DeveloperBeau/SwiftSTT.git", from: "0.0.1"),
 ```
-
-> Tagged releases are coming. Until `v0.1.0` is published, pin to a commit hash
-> or track `main` directly.
 
 Then add `SwiftWhisperKit` to your target:
 
@@ -38,7 +33,7 @@ Then add `SwiftWhisperKit` to your target:
 .target(
     name: "MyApp",
     dependencies: [
-        .product(name: "SwiftWhisperKit", package: "SwiftWhisper"),
+        .product(name: "SwiftWhisperKit", package: "SwiftSTT"),
     ]
 )
 ```
@@ -51,80 +46,75 @@ In Xcode: **File > Add Package Dependencies** and paste the repo URL.
 
 ```
 swift run swiftwhisper download tiny
-swift run swiftwhisper download largeV3Turbo --background
 swift run swiftwhisper transcribe audio.wav
 swift run swiftwhisper transcribe audio.wav --format srt -o subs.srt
 swift run swiftwhisper transcribe-mic --max-duration 30
 swift run swiftwhisper list-models
+swift run swiftwhisper info small
 ```
 
-`--background` opts in to a background `URLSession` so model pulls can keep
-making progress while the host app is suspended. See the DocC article
-`Background-Downloads` for the iOS integration walkthrough.
+Subcommands: `download`, `list-models`, `transcribe`, `transcribe-mic`, `info`.
 
-Available subcommands: `download`, `list-models`, `transcribe`, `transcribe-mic`, `info`.
+`download --background` opts into a background `URLSession` so model pulls keep making progress while the host app is suspended. `transcribe` accepts multiple files and a `--concurrency` flag for parallel processing.
 
 ## Quick start (library)
 
-Pipeline-based live transcription:
+One-shot transcription with `WhisperCppContext`. It loads a ggml model and runs `whisper_full` over 16 kHz mono `Float` samples:
 
 ```swift
 import SwiftWhisperCore
 import SwiftWhisperKit
 
-@MainActor
-final class Dictation {
-    private var pipeline: TranscriptionPipeline?
+let downloader = ModelDownloader()
+let model = WhisperModel.recommendedForCurrentDevice()
 
-    func start() async throws {
-        let downloader = ModelDownloader()
-        let model = WhisperModel.recommendedForCurrentDevice()
+if await !downloader.isDownloaded(model) {
+    for try await _ in try await downloader.download(model) {}
+}
 
-        if await !downloader.isDownloaded(model) {
-            for try await _ in try await downloader.download(model) {}
-        }
+let bundle = try await downloader.bundle(for: model)
+let context = try WhisperCppContext(ggmlModelURL: bundle.ggmlModelURL)
 
-        let bundle = try await downloader.bundle(for: model)
-        let loaded = try await ModelLoader().loadBundle(bundle)
-        let tokenizer = try WhisperTokenizer(contentsOf: loaded.tokenizerURL)
-
-        let pipeline = TranscriptionPipeline(
-            audioInput: AVMicrophoneInput(),
-            vad: EnergyVAD(),
-            melSpectrogram: try MelSpectrogram(),
-            encoder: WhisperEncoder(runner: MLModelRunner(model: loaded.encoder)),
-            decoder: WhisperDecoder(
-                runner: MLStateModelRunner(model: loaded.decoder),
-                tokenizer: tokenizer
-            ),
-            tokenizer: tokenizer,
-            policy: LocalAgreementPolicy()
-        )
-        self.pipeline = pipeline
-
-        for await segment in try await pipeline.start() {
-            print("[\(segment.start)s] \(segment.text)")
-        }
-    }
-
-    func stop() async { await pipeline?.stop() }
+// `samples` is 16 kHz mono Float audio (see AudioFileInput / AVMicrophoneInput).
+let segments = try await context.transcribe(samples: samples)
+for segment in segments {
+    print("[\(segment.start)s] \(segment.text)")
 }
 ```
 
-For one-shot file transcription, lower-level token access, or meeting-length stitching, see the DocC articles under `Sources/SwiftWhisperKit/SwiftWhisperKit.docc/Articles/`.
+For live microphone capture, `WhisperCppEngine` wraps the record-then-transcribe lifecycle and publishes async streams of status and segments:
+
+```swift
+let engine = WhisperCppEngine()
+
+Task {
+    for await segment in engine.segmentStream() {
+        print(segment.text)
+    }
+}
+
+await engine.prepare()   // loads the model recorded in WhisperModelStorage
+try await engine.start() // begins mic capture
+// ...
+await engine.stop()      // runs whisper.cpp on the buffered audio
+```
+
+`prepare()` loads whichever model is recorded in `WhisperModelStorage`, so download one and set it as the default first.
 
 ## Models
 
-| Model           | Disk    | Peak runtime | Recommended for                  |
-| :-------------- | :------ | :----------- | :------------------------------- |
-| `.tiny`         | ~150 MB | ~350 MB      | Apple Watch class, <2 GB devices |
-| `.base`         | ~290 MB | ~600 MB      | iPhone SE, 2 to 4 GB devices     |
-| `.small`        | ~580 MB | ~1.2 GB      | Recent iPhones, 4 to 6 GB        |
-| `.largeV3Turbo` | ~800 MB | ~1.7 GB      | iPad Pro, Mac, 6+ GB             |
+| Model           | ggml weights | Peak runtime | Display name | Suited to                |
+| :-------------- | :----------- | :----------- | :----------- | :----------------------- |
+| `.tiny`         | ~75 MB       | ~200 MB      | Tiny         | <2 GB devices            |
+| `.base`         | ~145 MB      | ~400 MB      | Small        | 2 to 4 GB devices        |
+| `.small`        | ~465 MB      | ~1.0 GB      | Default      | 4 to 6 GB devices        |
+| `.largeV3Turbo` | ~1.62 GB     | ~3.2 GB      | Best         | 6+ GB devices, Mac       |
+
+`displayName` is a quality-ladder label, deliberately not matching the underlying Whisper size name: a user picks by how good they want results, not by parameter count.
 
 `WhisperModel.recommendedForCurrentDevice()` picks the largest model that fits the host's `ProcessInfo.physicalMemory` with headroom for the OS and host app. Use it when shipping a single binary that targets multiple device classes.
 
-Models are pulled from `argmaxinc/whisperkit-coreml` on HuggingFace and cached in `~/Library/Application Support/SwiftWhisper/Models/`. Override the cache directory with `SWIFTWHISPER_CACHE_DIR` or pass `--cache-dir` to any CLI subcommand.
+Models are pulled from [`ggerganov/whisper.cpp`](https://huggingface.co/ggerganov/whisper.cpp) on HuggingFace and cached in `~/Library/Application Support/SwiftWhisper/Models/<model>/`. Each download also fetches an optional Core ML encoder (`<stem>-encoder.mlmodelc`). Override the cache directory with `SWIFTWHISPER_CACHE_DIR` or pass `--cache-dir` to any CLI subcommand.
 
 ## Output formats
 
@@ -138,36 +128,33 @@ The CLI's `--format` flag accepts:
 - `ttml`: Timed Text Markup Language XML, buffered
 - `sbv`: YouTube SubViewer, streams
 
-`ndjson` and `sbv` emit incrementally, so they work well for piping live mic output to another process. `json` and `ttml` buffer because they need a closing wrapper element.
+`ndjson` and `sbv` emit incrementally, so they work well for piping output to another process. `json` and `ttml` buffer because they need a closing wrapper element.
 
 ## Architecture
 
 ```
-mic / file -> AudioInputProvider -> VAD -> MelSpectrogram -> WhisperEncoder
-                                                                |
-                                                                v
-                       TranscriptionSegment <- LocalAgreementPolicy <- WhisperDecoder
-                                  |
-                                  v
-                         AsyncStream<TranscriptionSegment>
+mic / file -> AudioInputProvider -> [Float] buffer -> WhisperCppContext (whisper.cpp)
+                                                              |
+                                                              v
+                                                    [TranscriptionSegment]
 ```
+
+This is a record-then-transcribe engine: audio accumulates in a buffer while recording, then `whisper_full` runs once on `stop()`.
 
 Components:
 
-- **`AudioInputProvider`** (protocol): pulls 16 kHz mono Float audio from a source. Implementations: `AVMicrophoneInput`, `AudioFileInput`, `AVAudioCapture`.
-- **`VoiceActivityDetector`** (protocol): gates downstream work to speech-only chunks. Implementations: `EnergyVAD`, `SileroVAD`, `VADBoundaryRefiner`.
-- **`MelSpectrogramProcessor`** (actor): rolling 30-second log-mel buffer; matches Whisper's preprocessing.
-- **`WhisperEncoder`** (actor): runs the audio encoder Core ML model and returns the encoder embeddings.
-- **`WhisperDecoder`** (actor): autoregressive token decoder with greedy, temperature, and beam search modes; supports timestamp tokens, anti-hallucination thresholds, and per-beam KV cache via `BranchableStatefulRunner`.
-- **`LocalAgreementPolicy`**: suppresses unstable partial hypotheses across decode windows.
-- **`WordAligner`**: optional DTW-based word timing refinement.
-- **`TranscriptionPipeline`** (actor): wires the above into a single `AsyncStream<TranscriptionSegment>` source.
+- **`AudioInputProvider`** (protocol): pulls 16 kHz mono `Float` audio from a source. Implementations: `AVMicrophoneInput`, `AudioFileInput`, `AVAudioCapture`.
+- **`WhisperCppContext`** (actor): wraps a `whisper_context`; loads a ggml model plus an optional Core ML encoder and runs `whisper_full`, reporting progress through a callback.
+- **`WhisperCppEngine`** (actor): mic capture and the `prepare` / `start` / `stop` lifecycle, publishing `WhisperEngineStatus` and `TranscriptionSegment` async streams. Conforms to `WhisperTranscriptionEngine`.
+- **`ModelDownloader`** (actor): fetches ggml weights and the Core ML encoder with progress reporting, and manages the on-disk cache.
+- **`EnergyVAD`** / **`SileroVAD`**: optional voice-activity detectors.
 
-Three SPM targets:
+Three SPM library/executable targets, plus a binary target:
 
-- `SwiftWhisperCore`: protocols, value types, and policy logic. Zero Apple framework deps.
-- `SwiftWhisperKit`: AVFoundation, CoreML, and Accelerate implementations.
-- `SwiftWhisperCLI`: `swiftwhisper` binary built on `SwiftWhisperKit`.
+- `WhisperCpp`: the whisper.cpp v1.8.4 xcframework (binary target).
+- `SwiftWhisperCore`: protocols, value types, and model metadata. Zero Apple framework deps.
+- `SwiftWhisperKit`: the engine, audio capture, and downloader. Depends on `WhisperCpp` and ZIPFoundation.
+- `SwiftWhisperCLI`: the `swiftwhisper` executable, built on `SwiftWhisperKit` and ArgumentParser.
 
 ## Testing
 
@@ -175,15 +162,15 @@ Three SPM targets:
 swift test
 ```
 
-457 unit tests in 53 suites finish in roughly 11 seconds on an M-series Mac. The full suite is mock-driven: no model download is required and no Core ML weights are loaded. Tests cover the encoder/decoder feature plumbing, beam search, sampling, timestamp parsing, VAD, mel spectrogram numerics, audio decoding, CLI argument parsing, all seven output formatters, the background-download `URLSession` delegate bridge, and the `--background` CLI flag.
+241 tests across 34 files in three unit test targets. The unit suite is mock-driven: no model download is required and no model weights are loaded.
 
-A separate integration test target runs the real `.mlmodelc` end-to-end. It is gated by an environment variable so default `swift test` skips it:
+A separate integration test target runs the real model end-to-end. It is gated by an environment variable so default `swift test` skips it:
 
 ```
-SWIFTWHISPER_RUN_INTEGRATION=1 swift test
+SWIFTWHISPER_RUN_INTEGRATION=1 swift test --filter SwiftWhisperIntegrationTests
 ```
 
-The integration suite downloads the tiny model (~150 MB on first run) and exercises the full pipeline against a synthetic audio buffer. It runs on demand via the `integration` GitHub Actions workflow (`workflow_dispatch`).
+The integration suite downloads the tiny model (~75 MB on first run) and exercises the full pipeline against a synthetic audio buffer. `SWIFTWHISPER_INTEGRATION_MODEL` overrides which model it uses. It runs on demand via the `integration` GitHub Actions workflow (`workflow_dispatch`).
 
 ## License
 
