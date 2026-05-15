@@ -10,10 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Background `URLSession` download mode for Whisper models, with delegate-bridged
   progress streams and relaunch recovery.
-- `--background` flag on the `swiftwhisper download` CLI command.
+- `--background` flag on the `swiftstt download` CLI command.
 - DocC article: `Background-Downloads` with iOS integration walkthrough.
-- Integration test target `SwiftWhisperIntegrationTests` (gated by
-  `SWIFTWHISPER_RUN_INTEGRATION=1`).
+- Integration test target `SwiftSTTIntegrationTests` (gated by
+  `SWIFTSTT_RUN_INTEGRATION=1`).
 - GitHub Actions workflows: `ci.yml`, `lint.yml`, `integration.yml`.
 
 ### Changed

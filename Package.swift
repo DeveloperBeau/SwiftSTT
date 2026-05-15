@@ -14,15 +14,15 @@ let whisperCppXCFrameworkURL =
     + "whisper-\(whisperCppVersion)-xcframework.zip"
 
 let package = Package(
-    name: "SwiftWhisper",
+    name: "SwiftSTT",
     platforms: [
         .iOS(.v18),
         .macOS(.v15),
     ],
     products: [
-        .library(name: "SwiftWhisperCore", targets: ["SwiftWhisperCore"]),
-        .library(name: "SwiftWhisperKit", targets: ["SwiftWhisperKit"]),
-        .executable(name: "swiftwhisper", targets: ["SwiftWhisperCLI"]),
+        .library(name: "SwiftSTTCore", targets: ["SwiftSTTCore"]),
+        .library(name: "SwiftSTTKit", targets: ["SwiftSTTKit"]),
+        .executable(name: "swiftstt", targets: ["SwiftSTTCLI"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.4.0"),
@@ -36,22 +36,22 @@ let package = Package(
             checksum: "1c7a93bd20fe4e57e0af12051ddb34b7a434dfc9acc02c8313393150b6d1821f"
         ),
         .target(
-            name: "SwiftWhisperCore",
+            name: "SwiftSTTCore",
             swiftSettings: upcoming
         ),
         .target(
-            name: "SwiftWhisperKit",
+            name: "SwiftSTTKit",
             dependencies: [
-                "SwiftWhisperCore",
+                "SwiftSTTCore",
                 "WhisperCpp",
                 .product(name: "ZIPFoundation", package: "ZIPFoundation"),
             ],
             swiftSettings: upcoming
         ),
         .executableTarget(
-            name: "SwiftWhisperCLI",
+            name: "SwiftSTTCLI",
             dependencies: [
-                "SwiftWhisperKit",
+                "SwiftSTTKit",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             swiftSettings: upcoming + [
@@ -59,19 +59,19 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "SwiftWhisperCoreTests",
-            dependencies: ["SwiftWhisperCore"],
+            name: "SwiftSTTCoreTests",
+            dependencies: ["SwiftSTTCore"],
             swiftSettings: upcoming
         ),
         .testTarget(
-            name: "SwiftWhisperKitTests",
-            dependencies: ["SwiftWhisperKit"],
+            name: "SwiftSTTKitTests",
+            dependencies: ["SwiftSTTKit"],
             swiftSettings: upcoming
         ),
         .testTarget(
-            name: "SwiftWhisperCLITests",
+            name: "SwiftSTTCLITests",
             dependencies: [
-                "SwiftWhisperCLI",
+                "SwiftSTTCLI",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             swiftSettings: upcoming + [
@@ -79,8 +79,8 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "SwiftWhisperIntegrationTests",
-            dependencies: ["SwiftWhisperKit"],
+            name: "SwiftSTTIntegrationTests",
+            dependencies: ["SwiftSTTKit"],
             swiftSettings: upcoming
         ),
     ],
