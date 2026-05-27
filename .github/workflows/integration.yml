@@ -24,8 +24,8 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 30
     env:
-      SWIFTWHISPER_RUN_INTEGRATION: "1"
-      SWIFTWHISPER_INTEGRATION_MODEL: ${{ inputs.model || 'tiny' }}
+      SWIFTSTT_RUN_INTEGRATION: "1"
+      SWIFTSTT_INTEGRATION_MODEL: ${{ inputs.model || 'tiny' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -39,4 +39,4 @@ jobs:
         run: swift --version
 
       - name: Run integration tests
-        run: swift test --filter SwiftWhisperIntegrationTests
+        run: swift test --filter SwiftSTTIntegrationTests

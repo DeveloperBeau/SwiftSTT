@@ -37,8 +37,8 @@ You can expect:
 
 In scope:
 
-- Code in `Sources/` (`SwiftWhisperCore`, `SwiftWhisperKit`, `SwiftWhisperCLI`).
-- The `swiftwhisper` CLI binary distributed via tagged releases.
+- Code in `Sources/` (`SwiftSTTCore`, `SwiftSTTKit`, `SwiftSTTCLI`).
+- The `swiftstt` CLI binary distributed via tagged releases.
 - Build and CI configuration in this repository.
 
 Out of scope:

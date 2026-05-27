@@ -1,4 +1,4 @@
-# Contributing to SwiftWhisper
+# Contributing to SwiftSTT
 
 Thanks for considering a contribution. This document covers how to file issues,
 propose changes, and get a pull request merged.
@@ -18,7 +18,7 @@ to report a concern.
   use case before the proposed API.
 - **Pull requests** -- fix bugs, add features, improve docs. Smaller PRs land
   faster than large ones.
-- **Documentation** -- DocC articles in `Sources/SwiftWhisperKit/SwiftWhisperKit.docc/Articles/`
+- **Documentation** -- DocC articles in `Sources/SwiftSTTKit/SwiftSTTKit.docc/Articles/`
   are first-class contributions.
 
 ## Development setup
@@ -41,18 +41,18 @@ swift test
 Run the CLI locally:
 
 ```bash
-swift run swiftwhisper --help
-swift run swiftwhisper list-models
-swift run swiftwhisper download tiny
+swift run swiftstt --help
+swift run swiftstt list-models
+swift run swiftstt download tiny
 ```
 
 ## Project layout
 
 | Target | Purpose |
 |--------|---------|
-| `SwiftWhisperCore` | Pure-Swift models, errors, protocols. No CoreML, no AVFoundation. |
-| `SwiftWhisperKit` | CoreML inference, audio capture, tokeniser, pipeline. |
-| `SwiftWhisperCLI` | `swiftwhisper` executable. |
+| `SwiftSTTCore` | Pure-Swift models, errors, protocols. No CoreML, no AVFoundation. |
+| `SwiftSTTKit` | CoreML inference, audio capture, tokeniser, pipeline. |
+| `SwiftSTTCLI` | `swiftstt` executable. |
 
 Tests mirror the source layout under `Tests/`.
 

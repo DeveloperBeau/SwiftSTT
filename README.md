@@ -1,4 +1,4 @@
-# SwiftWhisper
+# SwiftSTT
 
 On-device speech-to-text for Apple platforms, built on whisper.cpp.
 
@@ -10,7 +10,7 @@ On-device speech-to-text for Apple platforms, built on whisper.cpp.
 
 ## What it does
 
-SwiftWhisper transcribes audio to text on-device using OpenAI's Whisper models, running on [whisper.cpp](https://github.com/ggml-org/whisper.cpp) through a prebuilt xcframework. It captures from the microphone or reads pre-recorded files, then runs `whisper_full` once over the buffered audio and returns timestamped segments. The models are multilingual with automatic language detection. A `swiftwhisper` CLI covers transcription and model management across seven output formats; the library exposes the same engine for host apps. An optional Core ML encoder is downloaded alongside each model for extra on-device acceleration. The unit test suite is mock-driven, so CI runs without downloading model weights.
+SwiftSTT transcribes audio to text on-device using OpenAI's Whisper models, running on [whisper.cpp](https://github.com/ggml-org/whisper.cpp) through a prebuilt xcframework. It captures from the microphone or reads pre-recorded files, then runs `whisper_full` once over the buffered audio and returns timestamped segments. The models are multilingual with automatic language detection. A `swiftstt` CLI covers transcription and model management across seven output formats; the library exposes the same engine for host apps. An optional Core ML encoder is downloaded alongside each model for extra on-device acceleration. The unit test suite is mock-driven, so CI runs without downloading model weights.
 
 ## Requirements
 
@@ -27,30 +27,30 @@ Add the package to your `Package.swift`:
 .package(url: "https://github.com/DeveloperBeau/SwiftSTT.git", from: "0.0.1"),
 ```
 
-Then add `SwiftWhisperKit` to your target:
+Then add `SwiftSTTKit` to your target:
 
 ```swift
 .target(
     name: "MyApp",
     dependencies: [
-        .product(name: "SwiftWhisperKit", package: "SwiftSTT"),
+        .product(name: "SwiftSTTKit", package: "SwiftSTT"),
     ]
 )
 ```
 
-`SwiftWhisperCore` (the protocol layer with no Apple framework dependencies) is pulled in as a transitive dependency.
+`SwiftSTTCore` (the protocol layer with no Apple framework dependencies) is pulled in as a transitive dependency.
 
 In Xcode: **File > Add Package Dependencies** and paste the repo URL.
 
 ## Quick start (CLI)
 
 ```
-swift run swiftwhisper download tiny
-swift run swiftwhisper transcribe audio.wav
-swift run swiftwhisper transcribe audio.wav --format srt -o subs.srt
-swift run swiftwhisper transcribe-mic --max-duration 30
-swift run swiftwhisper list-models
-swift run swiftwhisper info small
+swift run swiftstt download tiny
+swift run swiftstt transcribe audio.wav
+swift run swiftstt transcribe audio.wav --format srt -o subs.srt
+swift run swiftstt transcribe-mic --max-duration 30
+swift run swiftstt list-models
+swift run swiftstt info small
 ```
 
 Subcommands: `download`, `list-models`, `transcribe`, `transcribe-mic`, `info`.
@@ -62,8 +62,8 @@ Subcommands: `download`, `list-models`, `transcribe`, `transcribe-mic`, `info`.
 One-shot transcription with `WhisperCppContext`. It loads a ggml model and runs `whisper_full` over 16 kHz mono `Float` samples:
 
 ```swift
-import SwiftWhisperCore
-import SwiftWhisperKit
+import SwiftSTTCore
+import SwiftSTTKit
 
 let downloader = ModelDownloader()
 let model = WhisperModel.recommendedForCurrentDevice()
@@ -114,7 +114,7 @@ await engine.stop()      // runs whisper.cpp on the buffered audio
 
 `WhisperModel.recommendedForCurrentDevice()` picks the largest model that fits the host's `ProcessInfo.physicalMemory` with headroom for the OS and host app. Use it when shipping a single binary that targets multiple device classes.
 
-Models are pulled from [`ggerganov/whisper.cpp`](https://huggingface.co/ggerganov/whisper.cpp) on HuggingFace and cached in `~/Library/Application Support/SwiftWhisper/Models/<model>/`. Each download also fetches an optional Core ML encoder (`<stem>-encoder.mlmodelc`). Override the cache directory with `SWIFTWHISPER_CACHE_DIR` or pass `--cache-dir` to any CLI subcommand.
+Models are pulled from [`ggerganov/whisper.cpp`](https://huggingface.co/ggerganov/whisper.cpp) on HuggingFace and cached in `~/Library/Application Support/SwiftSTT/Models/<model>/`. Each download also fetches an optional Core ML encoder (`<stem>-encoder.mlmodelc`). Override the cache directory with `SWIFTSTT_CACHE_DIR` or pass `--cache-dir` to any CLI subcommand.
 
 ## Output formats
 
@@ -152,9 +152,9 @@ Components:
 Three SPM library/executable targets, plus a binary target:
 
 - `WhisperCpp`: the whisper.cpp v1.8.4 xcframework (binary target).
-- `SwiftWhisperCore`: protocols, value types, and model metadata. Zero Apple framework deps.
-- `SwiftWhisperKit`: the engine, audio capture, and downloader. Depends on `WhisperCpp` and ZIPFoundation.
-- `SwiftWhisperCLI`: the `swiftwhisper` executable, built on `SwiftWhisperKit` and ArgumentParser.
+- `SwiftSTTCore`: protocols, value types, and model metadata. Zero Apple framework deps.
+- `SwiftSTTKit`: the engine, audio capture, and downloader. Depends on `WhisperCpp` and ZIPFoundation.
+- `SwiftSTTCLI`: the `swiftstt` executable, built on `SwiftSTTKit` and ArgumentParser.
 
 ## Testing
 
@@ -167,10 +167,10 @@ swift test
 A separate integration test target runs the real model end-to-end. It is gated by an environment variable so default `swift test` skips it:
 
 ```
-SWIFTWHISPER_RUN_INTEGRATION=1 swift test --filter SwiftWhisperIntegrationTests
+SWIFTSTT_RUN_INTEGRATION=1 swift test --filter SwiftSTTIntegrationTests
 ```
 
-The integration suite downloads the tiny model (~75 MB on first run) and exercises the full pipeline against a synthetic audio buffer. `SWIFTWHISPER_INTEGRATION_MODEL` overrides which model it uses. It runs on demand via the `integration` GitHub Actions workflow (`workflow_dispatch`).
+The integration suite downloads the tiny model (~75 MB on first run) and exercises the full pipeline against a synthetic audio buffer. `SWIFTSTT_INTEGRATION_MODEL` overrides which model it uses. It runs on demand via the `integration` GitHub Actions workflow (`workflow_dispatch`).
 
 ## License
 
