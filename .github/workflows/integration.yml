@@ -28,7 +28,7 @@ jobs:
       SWIFTSTT_INTEGRATION_MODEL: ${{ inputs.model || 'tiny' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Resolve Swift 6.3
         uses: DeveloperBeau/resolve-swift@v2
