@@ -164,6 +164,39 @@ struct StreamingEngineTests {
         #expect(received == expected)
     }
 
+    @Test("E0c: onStop preserves sample order within multi-sample buffers")
+    func onStopOrdersExactSamplesAcrossMultiSampleBuffers() async throws {
+        // E0/E0b script 200 single-sample buffers, so reversing a buffer in
+        // place is a no-op and can't be caught by them. Here each buffer
+        // carries 40 samples, so an in-place reversal is visible.
+        let buffers = (0..<5).map { chunkIndex in
+            (1...40).map { Float(chunkIndex * 40 + $0) }
+        }
+        let provider = MockAudioInput(buffers)
+
+        actor RecordingDecoder {
+            private(set) var received: [Float] = []
+            func decode(_ samples: [Float]) async throws -> [TranscriptionSegment] {
+                received = samples
+                return []
+            }
+        }
+        let recorder = RecordingDecoder()
+        let engine = WhisperCppEngine(
+            storage: WhisperModelStorage(defaults: UserDefaults(suiteName: UUID().uuidString)!),
+            audioFactory: { provider },
+            timing: .onStop,
+            transcribeWindow: { samples in try await recorder.decode(samples) }
+        )
+
+        try await engine.start()
+        await engine.stop()
+
+        let received = await recorder.received
+        let expected = (1...200).map(Float.init)
+        #expect(received == expected)
+    }
+
     @Test("E1: capture -> cutter -> decoder -> segment stream, during capture")
     func streamingEmitsDuringCapture() async throws {
         let buffer = Array(repeating: Float(0.5), count: 1_600)
