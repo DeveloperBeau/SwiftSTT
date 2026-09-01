@@ -9,10 +9,10 @@ import Foundation
 ///   window (decoder-time, not Whisper's predicted timestamps). Best when the
 ///   downstream UI cares about latency-of-confirmation more than precise audio
 ///   alignment.
-/// - ``timestampSegments`` lets Whisper emit `<|t.tt|>` markers and uses
-///   ``WhisperDecoder/parseSegments(tokens:tokenizer:windowOffsetSeconds:)`` to
-///   split on them. Each output segment carries Whisper's own start/end times.
-///   Best when the UI plays back audio and wants accurate seek points.
+/// - ``timestampSegments`` lets Whisper emit `<|t.tt|>` markers and splits the
+///   token stream on them. Each output segment carries Whisper's own
+///   start/end times. Best when the UI plays back audio and wants accurate
+///   seek points.
 public enum SegmentEmissionMode: Sendable, Equatable {
 
     /// Local-agreement on raw tokens. Time bounds come from the rolling mel cursor.
