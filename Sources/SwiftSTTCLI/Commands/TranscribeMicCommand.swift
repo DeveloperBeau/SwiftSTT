@@ -97,24 +97,29 @@ struct TranscribeMicCommand: AsyncParsableCommand {
         }
         defer { destination.close() }
 
-        // Subscribe to the segment stream BEFORE starting so we don't miss any
-        // segments emitted during stop().
-        let segStream = engine.segmentStream()
+        // Subscribe to the transcript stream BEFORE starting so we don't miss
+        // anything emitted during stop().
+        let updates = engine.transcriptStream()
 
-        // Consume segments in a background Task while recording is active.
-        // For buffered formats we accumulate; for streaming formats we emit live.
+        // Consume updates in a background Task while recording is active.
+        // For buffered formats we accumulate, which lets a correction take back
+        // a word before anything is written. Streaming formats emit live and so
+        // cannot: a line already on stdout cannot be unwritten, and the last
+        // words of a window go out as the model first heard them.
         var segmentIndex = 0
         let consumer = Task { [micCollector] in
-            for await segment in segStream {
+            for await update in updates {
                 if buffering {
-                    await micCollector.append(segment)
+                    await micCollector.apply(update)
                 } else {
-                    let index = segmentIndex
-                    let line = formatter.format(segment: segment, index: index)
-                    if !line.isEmpty {
-                        destination.writeLine(line)
+                    for segment in update.segments {
+                        let index = segmentIndex
+                        let line = formatter.format(segment: segment, index: index)
+                        if !line.isEmpty {
+                            destination.writeLine(line)
+                        }
+                        segmentIndex += 1
                     }
-                    segmentIndex += 1
                 }
             }
         }
@@ -210,8 +215,10 @@ struct TranscribeMicCommand: AsyncParsableCommand {
 actor MicSegmentCollector {
     private var segments: [TranscriptionSegment] = []
 
-    func append(_ segment: TranscriptionSegment) {
-        segments.append(segment)
+    /// Applies one update, so a window's final words can be corrected by the
+    /// window that read them with the rest of the sentence behind it.
+    func apply(_ update: TranscriptUpdate) {
+        update.apply(to: &segments)
     }
 
     func snapshot() -> [TranscriptionSegment] {

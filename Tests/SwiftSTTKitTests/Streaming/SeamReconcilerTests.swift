@@ -38,7 +38,7 @@ struct SeamReconcilerTests {
         let win = window(startingAt: 12.0, lasting: 5.0, cut: .silence)
         let decoded = [segment("hello", 0.5, 1.5), segment("world", 1.5, 3.0)]
 
-        let emitted = reconciler.reconcile(decoded, from: win)
+        let emitted = reconciler.reconcile(decoded, from: win).segments
 
         #expect(emitted == [segment("hello", 12.5, 13.5), segment("world", 13.5, 15.0)])
     }
@@ -57,7 +57,7 @@ struct SeamReconcilerTests {
         // The carried audio is re-decoded by the window after this one, and
         // the duplicate is removed there. Holding "delta" back here instead
         // would lose it outright if capture stopped before another window.
-        let emitted = reconciler.reconcile(decoded, from: win)
+        let emitted = reconciler.reconcile(decoded, from: win).segments
 
         #expect(emitted == decoded)
     }
@@ -76,7 +76,7 @@ struct SeamReconcilerTests {
         let emitted = reconciler.reconcile(
             [segment("carries the tail onward now", 0.0, 2.0)],
             from: window(startingAt: 13.5, lasting: 5, cut: .silence)
-        )
+        ).segments
 
         #expect(emitted.count == 1)
         #expect(emitted.first?.text == "onward now")
@@ -88,12 +88,12 @@ struct SeamReconcilerTests {
         let win = window(startingAt: 0, lasting: 15, cut: .maximumDuration)
         let decoded = [segment("a", 1.0, 2.0), segment("b", 3.0, 4.0)]
 
-        let emitted = reconciler.reconcile(decoded, from: win)
+        let emitted = reconciler.reconcile(decoded, from: win).segments
         #expect(emitted == decoded)
 
         let nextWindow = window(startingAt: 13.5, lasting: 5, cut: .stop)
         let nextDecoded = [segment("next", 0.0, 1.0)]
-        let nextEmitted = reconciler.reconcile(nextDecoded, from: nextWindow)
+        let nextEmitted = reconciler.reconcile(nextDecoded, from: nextWindow).segments
         #expect(nextEmitted == [segment("next", 13.5, 14.5)])
     }
 
@@ -117,7 +117,7 @@ struct SeamReconcilerTests {
         // not stop the match.
         let nextWindow = window(startingAt: 13.5, lasting: 5, cut: .silence)
         let nextDecoded = [segment("Delta echo,", 0.3, 1.3), segment("fresh", 1.3, 2.5)]
-        let emitted = reconciler.reconcile(nextDecoded, from: nextWindow)
+        let emitted = reconciler.reconcile(nextDecoded, from: nextWindow).segments
 
         #expect(emitted == [segment("fresh", 14.8, 16.0)])
     }
@@ -137,7 +137,7 @@ struct SeamReconcilerTests {
         // dropping it whole would lose the rest, so it is trimmed.
         let nextWindow = window(startingAt: 13.5, lasting: 5, cut: .silence)
         let emitted = reconciler.reconcile(
-            [segment("charlie delta echo", 0.5, 2.5)], from: nextWindow)
+            [segment("charlie delta echo", 0.5, 2.5)], from: nextWindow).segments
 
         #expect(emitted.count == 1)
         #expect(emitted.first?.text == "delta echo")
@@ -165,7 +165,7 @@ struct SeamReconcilerTests {
         // 13.5 + 5 == 18.5, so this window re-covers nothing and every word
         // it decodes is new by construction.
         let finalWindow = window(startingAt: 18.5, lasting: 5, cut: .stop)
-        let emitted = reconciler.reconcile([segment("early", 0.0, 0.2)], from: finalWindow)
+        let emitted = reconciler.reconcile([segment("early", 0.0, 0.2)], from: finalWindow).segments
 
         #expect(emitted == [segment("early", 18.5, 18.7)])
     }
@@ -175,12 +175,12 @@ struct SeamReconcilerTests {
         var reconciler = SeamReconciler(overlapDuration: 1.5)
         let win = window(startingAt: 0, lasting: 15, cut: .maximumDuration)
         let emitted = reconciler.reconcile(
-            [segment("one long sentence", 0.0, 15.0)], from: win)
+            [segment("one long sentence", 0.0, 15.0)], from: win).segments
         #expect(emitted == [segment("one long sentence", 0.0, 15.0)])
 
         let nextWindow = window(startingAt: 13.5, lasting: 5, cut: .stop)
         let nextDecoded = [segment("sentence", 0.0, 1.5), segment("after", 1.5, 3.0)]
-        let nextEmitted = reconciler.reconcile(nextDecoded, from: nextWindow)
+        let nextEmitted = reconciler.reconcile(nextDecoded, from: nextWindow).segments
         #expect(nextEmitted == [segment("after", 15.0, 16.5)])
     }
 
@@ -188,11 +188,11 @@ struct SeamReconcilerTests {
     func emptyDecodeDoesNotCrash() {
         var reconciler = SeamReconciler(overlapDuration: 1.5)
         let forcedWindow = window(startingAt: 0, lasting: 15, cut: .maximumDuration)
-        let emitted = reconciler.reconcile([], from: forcedWindow)
+        let emitted = reconciler.reconcile([], from: forcedWindow).segments
         #expect(emitted == [])
 
         let nextWindow = window(startingAt: 13.5, lasting: 5, cut: .stop)
-        let nextEmitted = reconciler.reconcile([segment("after", 0.0, 1.0)], from: nextWindow)
+        let nextEmitted = reconciler.reconcile([segment("after", 0.0, 1.0)], from: nextWindow).segments
         #expect(nextEmitted == [segment("after", 13.5, 14.5)])
     }
 
@@ -200,35 +200,87 @@ struct SeamReconcilerTests {
     func zeroDurationWindow() {
         var reconciler = SeamReconciler(overlapDuration: 1.5)
         let zeroWindow = AudioWindow(samples: [], startTime: 4.0, cut: .maximumDuration)
-        let emitted = reconciler.reconcile([], from: zeroWindow)
+        let emitted = reconciler.reconcile([], from: zeroWindow).segments
         #expect(emitted == [])
 
         let followingWindow = window(startingAt: 4.0, lasting: 2, cut: .stop)
         let followingEmitted = reconciler.reconcile(
-            [segment("after", 0.0, 0.5)], from: followingWindow)
+            [segment("after", 0.0, 0.5)], from: followingWindow).segments
         #expect(followingEmitted == [segment("after", 4.0, 4.5)])
     }
 
-    @Test("R13: the two readings of the overlap disagree on a word and the match still holds")
-    func disagreeingReadingsStillMatch() {
+    @Test("R13: the unconfirmed tail of a window is retracted when the next one reads it better")
+    func unconfirmedTailIsRetracted() {
         var reconciler = SeamReconciler(overlapDuration: 1.5)
-        _ = reconciler.reconcile(
+        var transcript: [TranscriptionSegment] = []
+        reconciler.reconcile(
             [segment("when speech runs low", 12.0, 15.0)],
             from: window(startingAt: 0, lasting: 15, cut: .maximumDuration)
-        )
+        ).apply(to: &transcript)
+        #expect(transcript.map(\.text) == ["when speech runs low"])
 
-        // Real disagreement, taken from what whisper.cpp actually returned for
-        // this audio: the first reading ends the truncated window on "low",
-        // the second hears the whole word as "long". Three of the four words
-        // agree, and requiring all four to agree finds no overlap at all and
-        // emits the phrase twice.
-        let emitted = reconciler.reconcile(
+        // Real disagreement, taken from what whisper.cpp returned for this
+        // audio: the first reading ends the truncated window on "low", the
+        // second hears the whole word as "long". Three words agree, so the
+        // fourth is the only thing nothing corroborates, and the reading that
+        // heard the rest of the sentence gets to replace it.
+        let update = reconciler.reconcile(
             [segment("when speech runs long without pausing", 0.0, 3.0)],
             from: window(startingAt: 13.5, lasting: 5, cut: .silence)
         )
 
-        #expect(emitted.count == 1)
-        #expect(emitted.first?.text == "long without pausing")
+        #expect(update.retractingFrom == 12.0)
+        update.apply(to: &transcript)
+        #expect(transcript.map(\.text) == ["when speech runs", "long without pausing"])
+    }
+
+    @Test("R13b: a tail the next window agrees with is left alone")
+    func confirmedTailIsNotRetracted() {
+        var reconciler = SeamReconciler(overlapDuration: 1.5)
+        var transcript: [TranscriptionSegment] = []
+        reconciler.reconcile(
+            [segment("carries overlap forward the seam", 12.0, 15.0)],
+            from: window(startingAt: 0, lasting: 15, cut: .maximumDuration)
+        ).apply(to: &transcript)
+
+        // Also real: the second window opens on "the lap forward", having
+        // mangled the words it met with no audio in front of them, where the
+        // first window had them right. Neither reading is better as a rule.
+        // Every word of the first window's tail is agreed with here, so there
+        // is nothing unconfirmed and nothing is taken back.
+        let update = reconciler.reconcile(
+            [segment("the lap forward the seam reconciler then drops", 0.0, 3.0)],
+            from: window(startingAt: 13.5, lasting: 5, cut: .silence)
+        )
+
+        #expect(update.retractingFrom == nil)
+        update.apply(to: &transcript)
+        #expect(
+            transcript.map(\.text) == ["carries overlap forward the seam", "reconciler then drops"])
+    }
+
+    @Test("R15: nothing is retracted when the next window supplies no replacement")
+    func nothingRetractedWithoutAReplacement() {
+        var reconciler = SeamReconciler(overlapDuration: 1.5)
+        var transcript: [TranscriptionSegment] = []
+        reconciler.reconcile(
+            [segment("alpha bravo charlie delta", 12.0, 15.0)],
+            from: window(startingAt: 0, lasting: 15, cut: .maximumDuration)
+        ).apply(to: &transcript)
+
+        // The second window re-reads the overlap and stops short, returning
+        // only its first two words. That happens: the model can drop the start
+        // of a window it was handed mid-phrase. Retracting the tail here would
+        // take back "charlie delta" and put nothing in their place, which is
+        // the one outcome worse than leaving a doubtful word standing.
+        let update = reconciler.reconcile(
+            [segment("alpha bravo", 0.0, 1.0)],
+            from: window(startingAt: 13.5, lasting: 5, cut: .silence)
+        )
+
+        #expect(update.retractingFrom == nil)
+        update.apply(to: &transcript)
+        #expect(transcript.map(\.text) == ["alpha bravo charlie delta"])
     }
 
     @Test("R14: a single common word away from the seam is not treated as overlap")
@@ -245,7 +297,8 @@ struct SeamReconcilerTests {
         // is the seam itself, which R7 covers.
         let decoded = [segment("delta echo charlie foxtrot", 0.0, 3.0)]
         let emitted = reconciler.reconcile(
-            decoded, from: window(startingAt: 13.5, lasting: 5, cut: .silence))
+            decoded, from: window(startingAt: 13.5, lasting: 5, cut: .silence)
+        ).segments
 
         #expect(emitted.count == 1)
         #expect(emitted.first?.text == "delta echo charlie foxtrot")
@@ -359,7 +412,7 @@ struct SeamReconcilerTests {
                     startTime: generated.audioStart,
                     cut: generated.cut
                 )
-                emitted.append(contentsOf: reconciler.reconcile(generated.decoded, from: win))
+                reconciler.reconcile(generated.decoded, from: win).apply(to: &emitted)
             }
 
             let emittedTexts = Set(emitted.map(\.text))

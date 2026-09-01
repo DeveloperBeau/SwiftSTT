@@ -1,45 +1,56 @@
 import Foundation
 import SwiftSTTCore
 
-/// Drops the words of a decoded window that the window before it already
-/// emitted.
+/// Decides what a decoded window adds to the transcript, and what it takes
+/// back.
 ///
 /// Every window but the last carries its final
 /// ``StreamingWindowPolicy/overlapDuration`` of audio forward, so consecutive
 /// windows decode the same audio twice. The overlap is deliberate: a word the
 /// model meets at the very start of a window, with no audio in front of it, is
 /// the word it most often gets wrong. Decoding it twice is what buys the second
-/// reading its context. The cost is that those words arrive twice, and removing
-/// the second copy is this type's whole job.
+/// reading its context.
 ///
-/// The copy is found by matching text, not timestamps. A model decoding a short
-/// window reports times that overrun the audio it was handed, so a dividing
-/// line drawn in seconds falls in the wrong place. What repeats is the words,
-/// so the words are what is aligned: the transcript's tail against this
-/// window's opening, keeping only what comes after the last word the two
-/// readings agree on.
+/// The two readings are compared as text, not as timestamps. A model decoding
+/// a short window reports times that overrun the audio it was handed, so a
+/// dividing line drawn in seconds falls in the wrong place. Nor do the readings
+/// match word for word: the same audio comes back as `"runs low"` and as
+/// `"runs long"`. So they are aligned on their longest common subsequence, and
+/// the alignment decides two separate things.
+///
+/// Words the two readings agree on are corroborated, and the first window's
+/// copy of them stands. The second window's copy is dropped as a duplicate.
+///
+/// Words the *first* window emitted after the last agreed word are not
+/// corroborated by anything. They are what it made of audio that ran off the
+/// end of its window, and the next window read that same audio with the rest of
+/// the sentence behind it. Those words are retracted and the second reading
+/// takes their place. Neither reading is better as a rule, which is why the
+/// choice is not made by rule: only the tail nothing confirms is replaced, and
+/// a window whose tail the next one agrees with keeps every word of it.
 public struct SeamReconciler: Sendable {
 
-    /// One whitespace-separated token, in the form it is printed and in the
-    /// form it is compared. Comparison folds case and drops punctuation, so
-    /// `"boundary."` and `"boundary,"` count as the same word. A token of pure
-    /// punctuation compares as empty and never takes part in a match.
-    private struct Token {
-        let printed: String
+    /// Where one word sits in ``emitted``.
+    private struct WordPosition {
+        let segment: Int
+        let word: Int
         let compared: String
     }
 
-    /// Words already emitted, most recent last, trimmed to
-    /// ``maximumOverlapWordCount``.
-    private var emittedTail: [String] = []
+    /// Segments handed out so far, trimmed to those the next overlap could
+    /// still reach.
+    private var emitted: [TranscriptionSegment] = []
 
     /// Where the previous window's audio ended. A window starting before that
-    /// re-covers the difference, and the difference is the only place a
-    /// duplicate can come from: text repeated anywhere else is the speaker
-    /// repeating themselves, and dropping it would be a loss.
+    /// re-covers the difference, and the difference is the only place either a
+    /// duplicate or an unconfirmed word can come from.
     private var previousWindowEndTime: TimeInterval?
 
     private let maximumOverlapWordCount: Int
+
+    /// About double the fastest human speech, so a duration converts to a
+    /// generous upper bound on the words it can hold.
+    private static let fastestWordsPerSecond: Double = 12
 
     /// Creates a reconciler.
     ///
@@ -49,23 +60,16 @@ public struct SeamReconciler: Sendable {
         self.maximumOverlapWordCount = max(4, Int(overlapDuration * Self.fastestWordsPerSecond))
     }
 
-    /// About double the fastest human speech, so a duration converts to a
-    /// generous upper bound on the words it can hold.
-    private static let fastestWordsPerSecond: Double = 12
-
-    /// Returns the segments of `window` that have not already been emitted,
+    /// Returns what `window` adds to the transcript and what it withdraws,
     /// converted from window-local to absolute time.
     ///
     /// - Parameters:
     ///   - segments: what the model returned for `window`, in window-local time.
     ///   - window: the window those segments were decoded from.
-    /// - Returns: segments in absolute time, in the order given. A segment the
-    ///   overlap ends partway through is emitted with its consumed words
-    ///   removed and its start advanced past them.
     public mutating func reconcile(
         _ segments: [TranscriptionSegment],
         from window: AudioWindow
-    ) -> [TranscriptionSegment] {
+    ) -> TranscriptUpdate {
         let absolute = segments.map {
             TranscriptionSegment(
                 text: $0.text,
@@ -73,63 +77,87 @@ public struct SeamReconciler: Sendable {
                 end: $0.end + window.startTime
             )
         }
-
-        let overlap = previousWindowEndTime.map { max($0 - window.startTime, 0) } ?? 0
-        let kept = overlap > 0 ? droppingOverlap(from: absolute, spanning: overlap) : absolute
+        let overlapSeconds = previousWindowEndTime.map { max($0 - window.startTime, 0) } ?? 0
         previousWindowEndTime = window.startTime + window.duration
 
-        for segment in kept {
-            emittedTail.append(contentsOf: Self.comparableWords(of: segment.text))
-        }
-        if emittedTail.count > maximumOverlapWordCount {
-            emittedTail.removeFirst(emittedTail.count - maximumOverlapWordCount)
-        }
-        return kept
+        guard overlapSeconds > 0 else { return appending(absolute) }
+        return reconciling(absolute, overlapping: overlapSeconds)
     }
 
-    /// Aligns the start of `segments` against the end of ``emittedTail`` and
-    /// returns `segments` without the words the alignment says are a second
-    /// reading of audio already transcribed.
-    ///
-    /// The two readings rarely agree word for word. The model hears the same
-    /// audio with different context either side of it and returns `"runs low"`
-    /// where it returned `"runs long"`, or merges two words into one, or omits
-    /// the overlap altogether. Requiring the readings to match exactly finds
-    /// nothing on real speech, so what is looked for instead is their longest
-    /// common subsequence: the words both readings agree on, in order, with
-    /// disagreements skipped over. Everything up to the last agreed word is a
-    /// second reading and is dropped.
-    ///
-    /// - Parameter overlapSeconds: how much audio this window re-covers. It
-    ///   bounds the alignment, so a phrase the speaker genuinely repeats
-    ///   further into the window cannot be mistaken for the carried copy.
-    private func droppingOverlap(
-        from segments: [TranscriptionSegment],
-        spanning overlapSeconds: TimeInterval
-    ) -> [TranscriptionSegment] {
-        let opening = segments.flatMap { Self.comparableWords(of: $0.text) }
+    private mutating func reconciling(
+        _ absolute: [TranscriptionSegment],
+        overlapping overlapSeconds: TimeInterval
+    ) -> TranscriptUpdate {
         let span = min(
             max(Int(overlapSeconds * Self.fastestWordsPerSecond), 1), maximumOverlapWordCount)
-        let earlier = Array(emittedTail.suffix(span))
-        let later = Array(opening.prefix(span))
-        guard !earlier.isEmpty, !later.isEmpty else { return segments }
+        let positions = Self.wordPositions(in: emitted)
+        let earlierStart = max(positions.count - span, 0)
+        let earlier = positions[earlierStart...].map(\.compared)
+        let later = Array(absolute.flatMap { Self.comparableWords(of: $0.text) }.prefix(span))
+        guard !earlier.isEmpty, !later.isEmpty else { return appending(absolute) }
 
-        let agreed = Self.longestCommonSubsequence(earlier, later)
-        guard let lastAgreed = agreed.last else { return segments }
+        let agreed = Self.longestCommonSubsequence(Array(earlier), later)
+        guard let last = agreed.last else { return appending(absolute) }
         // One agreed word is only trusted when it is the very seam: the last
         // word already emitted reappearing as the first word decoded. Further
         // in, a lone match is as likely to be a common word landing twice by
-        // chance, and dropping everything before it would lose real speech.
-        guard agreed.count >= 2 || lastAgreed == 0 else { return segments }
+        // chance, and acting on it would drop or retract real speech.
+        guard agreed.count >= 2 || last.later == 0 else { return appending(absolute) }
 
-        var remaining = lastAgreed + 1
+        let fresh = Self.dropping(last.later + 1, wordsFrom: absolute)
+        // Nothing new arrived, so there is no reading to put in the place of
+        // anything: withdrawing the tail here would simply lose it.
+        guard !fresh.isEmpty else { return appending([]) }
+
+        let firstUnconfirmed = earlierStart + last.earlier + 1
+        guard firstUnconfirmed < positions.count else { return appending(fresh) }
+
+        let position = positions[firstUnconfirmed]
+        let retracted = emitted[position.segment]
+        let confirmedPart =
+            position.word > 0 ? [retracted.keepingLeadingWords(position.word)] : []
+        emitted.removeSubrange(position.segment...)
+        return appending(confirmedPart + fresh, retractingFrom: retracted.start)
+    }
+
+    /// Records `segments` as emitted and returns them as an update.
+    private mutating func appending(
+        _ segments: [TranscriptionSegment],
+        retractingFrom: TimeInterval? = nil
+    ) -> TranscriptUpdate {
+        emitted.append(contentsOf: segments)
+        // Only the span the next overlap can reach is ever consulted. Keeping
+        // more would grow without bound over a long recording.
+        let keep = maximumOverlapWordCount * 2
+        while Self.wordPositions(in: emitted).count > keep, emitted.count > 1 {
+            emitted.removeFirst()
+        }
+        return TranscriptUpdate(retractingFrom: retractingFrom, segments: segments)
+    }
+
+    private static func wordPositions(in segments: [TranscriptionSegment]) -> [WordPosition] {
+        segments.enumerated().flatMap { index, segment in
+            tokens(of: segment.text).enumerated().compactMap { wordIndex, token in
+                token.compared.isEmpty
+                    ? nil
+                    : WordPosition(segment: index, word: wordIndex, compared: token.compared)
+            }
+        }
+    }
+
+    /// Returns `segments` without its first `count` words.
+    private static func dropping(
+        _ count: Int,
+        wordsFrom segments: [TranscriptionSegment]
+    ) -> [TranscriptionSegment] {
+        var remaining = count
         var kept: [TranscriptionSegment] = []
         for segment in segments {
             guard remaining > 0 else {
                 kept.append(segment)
                 continue
             }
-            let wordCount = Self.comparableWords(of: segment.text).count
+            let wordCount = comparableWords(of: segment.text).count
             if wordCount <= remaining {
                 remaining -= wordCount
             } else {
@@ -140,12 +168,12 @@ public struct SeamReconciler: Sendable {
         return kept
     }
 
-    /// Returns the indices into `later` of the words forming a longest common
-    /// subsequence of `earlier` and `later`, in increasing order.
+    /// Returns the positions of the words forming a longest common subsequence
+    /// of `earlier` and `later`, in increasing order of both.
     private static func longestCommonSubsequence(
         _ earlier: [String],
         _ later: [String]
-    ) -> [Int] {
+    ) -> [(earlier: Int, later: Int)] {
         // Both inputs are bounded by the words the overlap can hold, a couple
         // of dozen at most, so the textbook quadratic table is the cheapest
         // thing that is also obviously correct.
@@ -160,11 +188,11 @@ public struct SeamReconciler: Sendable {
             }
         }
 
-        var indices: [Int] = []
+        var pairs: [(earlier: Int, later: Int)] = []
         var i = 0, j = 0
         while i < earlier.count, j < later.count {
             if earlier[i] == later[j] {
-                indices.append(j)
+                pairs.append((earlier: i, later: j))
                 i += 1
                 j += 1
             } else if lengths[i + 1][j] >= lengths[i][j + 1] {
@@ -173,7 +201,16 @@ public struct SeamReconciler: Sendable {
                 j += 1
             }
         }
-        return indices
+        return pairs
+    }
+
+    /// One whitespace-separated token, in the form it is printed and in the
+    /// form it is compared. Comparison folds case and drops punctuation, so
+    /// `"boundary."` and `"boundary,"` count as the same word. A token of pure
+    /// punctuation compares as empty and never takes part in an alignment.
+    private struct Token {
+        let printed: String
+        let compared: String
     }
 
     private static func tokens(of text: String) -> [Token] {
@@ -215,6 +252,21 @@ private extension TranscriptionSegment {
             text: words.dropFirst(cut).joined(separator: " "),
             start: advancedStart,
             end: end
+        )
+    }
+
+    /// Returns this segment cut down to its first `count` words, its end pulled
+    /// back to where those words are estimated to finish.
+    func keepingLeadingWords(_ count: Int) -> TranscriptionSegment {
+        let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard count > 0, let cut = SeamReconciler.tokenIndex(past: count, in: text), cut < words.count
+        else { return self }
+        let timings = proportionalWordTimings()
+        let pulledBackEnd = cut <= timings.count ? timings[cut - 1].end : end
+        return TranscriptionSegment(
+            text: words.prefix(cut).joined(separator: " "),
+            start: start,
+            end: pulledBackEnd
         )
     }
 }
