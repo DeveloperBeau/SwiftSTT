@@ -59,6 +59,32 @@ struct SeamReconcilerTests {
         #expect(emitted == decoded)
     }
 
+    @Test("R2b: forced cut with two candidates at or after preferredSeam picks the smaller end")
+    func forcedCutWithMultipleCandidatesPicksSmallerEnd() {
+        var reconciler = SeamReconciler(overlapDuration: 1.5)
+        let win = window(startingAt: 0, lasting: 15, cut: .maximumDuration)
+        let decoded = [
+            segment("a", 4.0, 5.0),
+            segment("b", 9.0, 10.0),
+            segment("c", 12.0, 13.0),
+            segment("d", 13.6, 14.0),
+            segment("e", 14.6, 14.8),
+        ]
+
+        let emitted = reconciler.reconcile(decoded, from: win)
+
+        // preferredSeam is 13.5; both "d" (14.0) and "e" (14.8) clear it, so
+        // there are two candidates. The seam must land on the smaller of the
+        // two, dropping "e" until the next window's overlap covers it.
+        #expect(
+            emitted == [
+                segment("a", 4.0, 5.0),
+                segment("b", 9.0, 10.0),
+                segment("c", 12.0, 13.0),
+                segment("d", 13.6, 14.0),
+            ])
+    }
+
     @Test("R3: no candidate at or after preferredSeam, then nothing lost across the gap")
     func noCandidateAtOrAfterPreferredSeam() {
         var reconciler = SeamReconciler(overlapDuration: 1.5)
