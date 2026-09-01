@@ -64,3 +64,6 @@ fastlane/test_output
 
 # Ideas - personal ideas for the project, not to be included in history
 ideas/
+
+# Agent tooling scratch
+.evolver/
