@@ -5,8 +5,9 @@ import SwiftSTTKit
 
 /// Live-mic transcription.
 ///
-/// Uses `WhisperCppEngine` for record-then-transcribe. Recording stops on
-/// Ctrl+C (SIGINT) or `--max-duration`, then transcription runs once on stop.
+/// Uses `WhisperCppEngine`. By default it records then transcribes once on
+/// stop; pass `--streaming` to transcribe incrementally while recording
+/// instead. Recording stops on Ctrl+C (SIGINT) or `--max-duration`.
 ///
 /// > Note: Microphone access requires `NSMicrophoneUsageDescription` in the
 /// > host binary's `Info.plist`. The bare `swift run` binary does not have
@@ -49,6 +50,11 @@ struct TranscribeMicCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Refuse to overwrite an existing --output file.")
     var noClobber: Bool = false
 
+    @Flag(
+        name: .customLong("streaming"),
+        help: "Transcribe incrementally while recording instead of once on stop.")
+    var isStreaming: Bool = false
+
     @Option(
         name: .long,
         help:
@@ -73,7 +79,10 @@ struct TranscribeMicCommand: AsyncParsableCommand {
         storage.model = model
         defer { storage.model = savedModel }
 
-        let engine = WhisperCppEngine(storage: storage)
+        let engine = WhisperCppEngine(
+            storage: storage,
+            timing: isStreaming ? .whileRecording(.default) : .onStop
+        )
         await engine.prepare()
 
         let formatter = SegmentFormatters.make(format)

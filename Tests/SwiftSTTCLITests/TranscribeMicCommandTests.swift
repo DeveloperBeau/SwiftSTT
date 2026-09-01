@@ -18,6 +18,7 @@ struct TranscribeMicCommandTests {
         #expect(cmd.format == .text)
         #expect(cmd.maxDuration == nil)
         #expect(cmd.cacheDir == nil)
+        #expect(cmd.isStreaming == false)
     }
 
     @Test("Subcommand parses every flag")
@@ -28,12 +29,20 @@ struct TranscribeMicCommandTests {
             "--format", "srt",
             "--max-duration", "30",
             "--cache-dir", "/tmp/cache",
+            "--streaming",
         ])
         #expect(cmd.model == .small)
         #expect(cmd.language == "en")
         #expect(cmd.format == .srt)
         #expect(cmd.maxDuration == 30)
         #expect(cmd.cacheDir == "/tmp/cache")
+        #expect(cmd.isStreaming == true)
+    }
+
+    @Test("--streaming parses to isStreaming == true")
+    func streamingFlagParses() throws {
+        let cmd = try TranscribeMicCommand.parse(["--streaming"])
+        #expect(cmd.isStreaming == true)
     }
 
     @Test("Default max-duration is nil")
