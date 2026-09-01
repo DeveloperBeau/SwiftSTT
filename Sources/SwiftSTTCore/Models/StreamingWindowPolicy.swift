@@ -10,8 +10,13 @@ public struct StreamingWindowPolicy: Sendable, Equatable {
     /// silence boundary. The fallback, not the primary cut.
     public let maximumWindowDuration: TimeInterval
 
-    /// Shortest window, in seconds, a silence boundary is allowed to cut.
-    /// A boundary arriving before this is ignored and audio keeps accumulating.
+    /// Shortest run of *new* speech, in seconds, a silence boundary is allowed
+    /// to cut. A boundary arriving before this is ignored and audio keeps
+    /// accumulating.
+    ///
+    /// Audio carried over from the previous window does not count toward it,
+    /// having been transcribed once already, so a window always holds at least
+    /// this much speech the model has not seen before.
     public let minimumWindowDuration: TimeInterval
 
     /// Seconds of audio re-covered by the next window after a
