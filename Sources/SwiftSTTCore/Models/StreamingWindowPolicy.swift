@@ -22,19 +22,30 @@ public struct StreamingWindowPolicy: Sendable, Equatable {
     /// Sample rate in Hz the durations above are measured against.
     public let sampleRate: Int
 
+    /// Below this, a window would force-cut on every incoming buffer rather
+    /// than ever accumulating audio, which defeats the point of a maximum —
+    /// so a non-positive `maximumWindowDuration` is floored here rather than
+    /// passed through. Matches the capture buffer duration
+    /// `WhisperCppEngine` requests, itself the smallest unit of audio a
+    /// window can usefully be made of.
+    private static let minimumMaximumWindowDuration: TimeInterval = 0.1
+
     /// Creates a policy, clamping values that cannot hold together.
     ///
-    /// `minimumWindowDuration` is clamped to at most `maximumWindowDuration`,
-    /// and `overlapDuration` to at most `maximumWindowDuration / 2`.
+    /// `maximumWindowDuration` is floored at
+    /// ``minimumMaximumWindowDuration``. `minimumWindowDuration` is then
+    /// clamped to at most `maximumWindowDuration`, and `overlapDuration` to
+    /// at most `maximumWindowDuration / 2`.
     public init(
         maximumWindowDuration: TimeInterval = 15,
         minimumWindowDuration: TimeInterval = 2,
         overlapDuration: TimeInterval = 1.5,
         sampleRate: Int = 16_000
     ) {
-        self.maximumWindowDuration = maximumWindowDuration
-        self.minimumWindowDuration = min(minimumWindowDuration, maximumWindowDuration)
-        self.overlapDuration = min(overlapDuration, maximumWindowDuration / 2)
+        let flooredMaximum = max(maximumWindowDuration, Self.minimumMaximumWindowDuration)
+        self.maximumWindowDuration = flooredMaximum
+        self.minimumWindowDuration = min(minimumWindowDuration, flooredMaximum)
+        self.overlapDuration = min(overlapDuration, flooredMaximum / 2)
         self.sampleRate = sampleRate
     }
 

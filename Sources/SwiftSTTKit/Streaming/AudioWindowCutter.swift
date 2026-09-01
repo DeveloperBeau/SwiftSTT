@@ -60,19 +60,8 @@ public actor AudioWindowCutter {
     /// ignoring ``StreamingWindowPolicy/minimumWindowDuration``.
     ///
     /// Returns `nil` if nothing is buffered or the buffer holds no speech.
-    /// Leaves the cutter's state alone; call ``reset()`` for a fresh session.
     public func flush() async -> AudioWindow? {
         closeWindow(cause: .stop)
-    }
-
-    /// Clears buffered audio and elapsed time, and resets the detector and refiner.
-    public func reset() async {
-        pending.removeAll(keepingCapacity: true)
-        pendingContainsSpeech = false
-        windowStartTime = 0
-        elapsedTime = 0
-        await detector.reset()
-        await refiner.reset()
     }
 
     private func closeWindow(cause: WindowCutCause) -> AudioWindow? {
@@ -82,7 +71,12 @@ public actor AudioWindowCutter {
         // windowStartTime tracks consumed audio exactly (see AudioWindowCutterTests.C6).
         let carried: [Float]
         if cause == .maximumDuration, pendingContainsSpeech {
-            let carryCount = Int(policy.overlapDuration * Double(policy.sampleRate))
+            // StreamingWindowPolicy floors maximumWindowDuration and clamps
+            // overlapDuration from it, so this should never go negative in
+            // practice — guarded anyway, because `suffix(_:)` traps on a
+            // negative length and this is the line that would take the
+            // trap, not the policy that produced it.
+            let carryCount = max(Int(policy.overlapDuration * Double(policy.sampleRate)), 0)
             carried = Array(pending.suffix(carryCount))
         } else {
             carried = []

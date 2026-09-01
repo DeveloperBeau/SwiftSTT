@@ -187,25 +187,6 @@ struct AudioWindowCutterTests {
         #expect(flushed == nil)
     }
 
-    @Test("C10: reset")
-    func resetClearsState() async throws {
-        let policy = StreamingWindowPolicy(maximumWindowDuration: 1.0, minimumWindowDuration: 0.5, overlapDuration: 0.3)
-        let cutter = makeCutter(policy: policy, verdicts: Array(repeating: true, count: 20))
-
-        for _ in 0..<17 {
-            _ = await cutter.ingest(buffer())
-        }
-        await cutter.reset()
-
-        var window: AudioWindow?
-        for i in 0..<10 {
-            let result = await cutter.ingest(buffer())
-            if i == 9 { window = result }
-        }
-        let closed = try #require(window)
-        #expect(closed.startTime == 0)
-    }
-
     @Test("C11: ordering — silence beats duration when both fire on the same buffer")
     func silenceBeatsDurationOnTheSameBuffer() async throws {
         let policy = StreamingWindowPolicy(maximumWindowDuration: 0.5, minimumWindowDuration: 0.2, overlapDuration: 0.2)
@@ -350,5 +331,22 @@ struct AudioWindowCutterTests {
                 previousWindow = window
             }
         }
+    }
+
+    @Test("C16: a policy built from a negative maximumWindowDuration still forces a valid cut on the first speech buffer, not a crash")
+    func negativeMaximumDurationForcesAValidCutNotACrash() async throws {
+        // StreamingWindowPolicy floors a non-positive maximumWindowDuration
+        // rather than passing it through (see StreamingWindowPolicyTests.P8).
+        // Confirming that here, through the cutter, is the regression that
+        // matters: unfloored, `overlapDuration` clamps to a negative half of
+        // a negative maximum, `carryCount` goes negative, and
+        // `pending.suffix(carryCount)` traps — reachable from the very first
+        // speech buffer, since the floored maximum (0.1s) equals one buffer.
+        let policy = StreamingWindowPolicy(maximumWindowDuration: -1)
+        let cutter = makeCutter(policy: policy, verdicts: [true])
+
+        let window = try #require(await cutter.ingest(buffer()))
+        #expect(window.cut == .maximumDuration)
+        #expect(window.samples.count == bufferSize)
     }
 }

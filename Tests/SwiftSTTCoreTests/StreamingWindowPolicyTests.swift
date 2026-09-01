@@ -63,7 +63,11 @@ struct StreamingWindowPolicyTests {
     func fuzzClampInvariants() {
         var generator = SeededGenerator(seed: 0xF00D_BEEF)
         for iteration in 0..<500 {
-            let maximum = TimeInterval.random(in: 0.01...120, using: &generator)
+            // Range includes non-positive values on purpose: the clamp this
+            // invariant checks (`maximumWindowDuration > 0`) must be enforced
+            // by `init`, not merely true because every drawn value already
+            // satisfies it.
+            let maximum = TimeInterval.random(in: -5...120, using: &generator)
             let minimum = TimeInterval.random(in: 0.01...120, using: &generator)
             let overlap = TimeInterval.random(in: 0.01...120, using: &generator)
             let sampleRate = [8_000, 16_000, 44_100].randomElement(using: &generator)!
@@ -87,6 +91,19 @@ struct StreamingWindowPolicyTests {
                 continue
             }
         }
+    }
+
+    @Test("P8: boundary — a non-positive maximumWindowDuration is floored, not passed through")
+    func nonPositiveMaximumIsFloored() {
+        let zero = StreamingWindowPolicy(maximumWindowDuration: 0)
+        #expect(zero.maximumWindowDuration == 0.1)
+        #expect(zero.minimumWindowDuration == 0.1)
+        #expect(zero.overlapDuration == 0.05)
+
+        let negative = StreamingWindowPolicy(maximumWindowDuration: -1)
+        #expect(negative.maximumWindowDuration == 0.1)
+        #expect(negative.minimumWindowDuration == 0.1)
+        #expect(negative.overlapDuration == 0.05)
     }
 
     @Test("P7: Equatable")

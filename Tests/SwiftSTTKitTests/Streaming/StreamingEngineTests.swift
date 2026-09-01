@@ -24,6 +24,54 @@ private actor MockAudioInput: AudioInputProvider {
     func stop() async {}
 }
 
+/// An `AudioInputProvider` whose `stop()` suspends before returning, so a
+/// reentrant `start()` has a window to race in while a `stop()` call for this
+/// provider is still in flight on the engine actor.
+private actor SlowStopMockAudioInput: AudioInputProvider {
+    private let buffers: [[Float]]
+    private let stopDelayNanoseconds: UInt64
+    init(_ buffers: [[Float]], stopDelayNanoseconds: UInt64) {
+        self.buffers = buffers
+        self.stopDelayNanoseconds = stopDelayNanoseconds
+    }
+
+    func start(
+        targetSampleRate: Double,
+        bufferDurationSeconds: Double,
+        onChunk: @Sendable @escaping ([Float]) -> Void
+    ) async throws(SwiftSTTError) {
+        for chunk in buffers {
+            onChunk(chunk)
+        }
+    }
+
+    func stop() async {
+        try? await Task.sleep(nanoseconds: stopDelayNanoseconds)
+    }
+}
+
+/// Vends one provider per call, in order. `AudioCaptureFactory` is a plain
+/// synchronous `@Sendable` closure, not actor-isolated, so this uses a lock
+/// rather than an actor.
+private final class SequentialProviders: @unchecked Sendable {
+    private let providers: [any AudioInputProvider]
+    private var index = 0
+    private let lock = NSLock()
+    init(_ providers: [any AudioInputProvider]) { self.providers = providers }
+    func next() -> any AudioInputProvider {
+        lock.lock()
+        defer { lock.unlock() }
+        defer { index += 1 }
+        return providers[index]
+    }
+}
+
+/// Records whether the segment stream it is consuming has finished.
+private actor StreamFinishTracker {
+    private(set) var finished = false
+    func markFinished() { finished = true }
+}
+
 /// Returns a scripted result per call and records what it was handed.
 private actor ScriptedWindowDecoder {
     enum Step {
@@ -518,6 +566,104 @@ struct StreamingEngineTests {
                 segment("beta", 0.6, 0.9),
                 segment("gamma", 0.85, 0.95),
             ])
+    }
+
+    @Test("E11: a reentrant start() during an in-flight stop() does not clobber session 2 — onStop")
+    func reentrantStartDuringInFlightStopOnStop() async throws {
+        let slowProvider = SlowStopMockAudioInput([], stopDelayNanoseconds: 300_000_000)
+        let session2Samples = (1...200).map { Float($0) }
+        let fastProvider = MockAudioInput([session2Samples])
+        let providers = SequentialProviders([slowProvider, fastProvider])
+
+        actor CallRecordingDecoder {
+            private(set) var calls: [[Float]] = []
+            func decode(_ samples: [Float]) async throws -> [TranscriptionSegment] {
+                calls.append(samples)
+                return []
+            }
+        }
+        let decoder = CallRecordingDecoder()
+        let engine = WhisperCppEngine(
+            storage: WhisperModelStorage(defaults: UserDefaults(suiteName: UUID().uuidString)!),
+            audioFactory: { providers.next() },
+            timing: .onStop,
+            transcribeWindow: { samples in try await decoder.decode(samples) }
+        )
+
+        let tracker = StreamFinishTracker()
+        let stream = engine.segmentStream()
+        let consumer = Task {
+            for await _ in stream {}
+            await tracker.markFinished()
+        }
+
+        try await engine.start()  // session 1: slow-to-stop provider, delivers nothing
+        let session1Stop = Task { await engine.stop() }  // begins session 1's slow teardown
+        try await Task.sleep(nanoseconds: 50_000_000)  // let it reach its first suspension
+
+        try await engine.start()  // session 2: reentrant, while session 1's stop() is in flight
+        try await Task.sleep(nanoseconds: 400_000_000)  // session 1's slow stop has resumed by now
+        #expect(await tracker.finished == false)  // session 2 is still recording
+
+        await engine.stop()  // session 2's own stop
+        await session1Stop.value  // session 1's stop must also complete, not hang
+        await consumer.value  // the stream must finish now, not leak forever
+
+        #expect(await tracker.finished == true)
+        let calls = await decoder.calls
+        #expect(calls.contains(session2Samples))
+    }
+
+    @Test("E12: a reentrant start() during an in-flight stop() does not clobber session 2 — whileRecording")
+    func reentrantStartDuringInFlightStopWhileRecording() async throws {
+        let slowProvider = SlowStopMockAudioInput([], stopDelayNanoseconds: 300_000_000)
+        let session2Buffer = Array(repeating: Float(0.5), count: 1_600)
+        let fastProvider = MockAudioInput([session2Buffer, session2Buffer, session2Buffer])
+        let providers = SequentialProviders([slowProvider, fastProvider])
+        let decoder = ScriptedWindowDecoder([.segments([segment("session2", 0, 0.3)])])
+        let policy = StreamingWindowPolicy(maximumWindowDuration: 10, minimumWindowDuration: 0.2, overlapDuration: 1)
+
+        let engine = WhisperCppEngine(
+            storage: WhisperModelStorage(defaults: UserDefaults(suiteName: UUID().uuidString)!),
+            audioFactory: { providers.next() },
+            timing: .whileRecording(policy),
+            transcribeWindow: { samples in try await decoder.decode(samples) },
+            makeCutter: { policy in
+                AudioWindowCutter(
+                    policy: policy,
+                    detector: ScriptedVoiceActivityDetector(Array(repeating: true, count: 10)),
+                    refiner: VADBoundaryRefiner(startConsecutive: 1, endConsecutive: 1, sampleRate: 16_000)
+                )
+            }
+        )
+
+        let collected = SegmentListCollector()
+        let tracker = StreamFinishTracker()
+        let stream = engine.segmentStream()
+        let consumer = Task {
+            for await seg in stream {
+                await collected.append(seg)
+            }
+            await tracker.markFinished()
+        }
+
+        try await engine.start()  // session 1: slow-to-stop provider, delivers nothing
+        let session1Stop = Task { await engine.stop() }  // begins session 1's slow teardown
+        try await Task.sleep(nanoseconds: 50_000_000)  // let it reach its first suspension
+
+        try await engine.start()  // session 2: reentrant, while session 1's stop() is in flight
+        try await Task.sleep(nanoseconds: 400_000_000)  // session 1's slow stop has resumed by now
+        #expect(await tracker.finished == false)  // session 2 is still recording
+
+        await engine.stop()  // session 2's own stop: flushes and decodes its window
+        await session1Stop.value  // session 1's stop must also complete, not hang
+        await consumer.value  // the stream must finish now, not leak forever
+
+        let texts = await collected.all.map(\.text)
+        #expect(texts == ["session2"])
+        #expect(await tracker.finished == true)
+        let callCount = await decoder.callCount
+        #expect(callCount == 1)
     }
 }
 

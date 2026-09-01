@@ -27,6 +27,41 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
     /// Transcribes one window of 16 kHz mono Float32 PCM into segments.
     typealias WindowTranscribing = @Sendable ([Float]) async throws -> [TranscriptionSegment]
 
+    /// One recording session's mutable state, held by the actor as
+    /// ``currentSession`` and locally by ``stop()`` from the moment it is
+    /// entered.
+    ///
+    /// Swift actors are reentrant across `await`: while a `stop()` call is
+    /// suspended, a `start()` call for a *new* session can run to completion
+    /// on the same actor. Bundling everything one recording session owns
+    /// into a single reference-typed object, rather than a handful of flat
+    /// actor properties, is what makes that safe. `stop()` snapshots its own
+    /// `Session` into a local *before* its first suspension point and then
+    /// only ever touches that local for the rest of the method — a
+    /// reentrant `start()` installs a brand new `Session` in
+    /// `currentSession`, and the two never share storage, so neither call
+    /// can clobber the other's continuations, tasks, cutter or reconciler.
+    ///
+    /// `@unchecked Sendable`: every stored property is mutated only from
+    /// code running on `WhisperCppEngine`'s own actor executor
+    /// (`start()`, `stop()`, `appendSamples`, `enqueueDecode`,
+    /// `decodeAndEmit`). The `Task` closures that capture a `Session` never
+    /// read or write its properties directly; they only forward the
+    /// reference into an actor-isolated call.
+    private final class Session: @unchecked Sendable {
+        let input: any AudioInputProvider
+        var buffer: [Float] = []
+        var sampleContinuation: AsyncStream<[Float]>.Continuation?
+        var captureTask: Task<Void, Never>?
+        var cutter: AudioWindowCutter?
+        var seams: SeamReconciler?
+        var decodeTask: Task<Void, Never>?
+
+        init(input: any AudioInputProvider) {
+            self.input = input
+        }
+    }
+
     private let storage: WhisperModelStorage
     private let audioFactory: AudioCaptureFactory
     private let timing: TranscriptionTiming
@@ -45,15 +80,7 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
     private var isPreparing = false
     private var transcribeWindow: WindowTranscribing?
 
-    private var audioInput: (any AudioInputProvider)?
-    private var buffer: [Float] = []
-    private var captureToken: UUID?
-    private var sampleContinuation: AsyncStream<[Float]>.Continuation?
-    private var captureTask: Task<Void, Never>?
-
-    private var cutter: AudioWindowCutter?
-    private var seams: SeamReconciler?
-    private var decodeTask: Task<Void, Never>?
+    private var currentSession: Session?
 
     /// Creates a new engine with the given storage, audio input factory, and timing mode.
     public init(
@@ -213,27 +240,24 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
                 "models not loaded; call prepare() first"
             )
         }
-        guard audioInput == nil else { return }
+        guard currentSession == nil else { return }
 
         let input = audioFactory()
-        audioInput = input
-        buffer.removeAll(keepingCapacity: true)
-        let token = UUID()
-        captureToken = token
+        let session = Session(input: input)
+        currentSession = session
 
         if case .whileRecording(let policy) = timing {
-            cutter = makeCutter(policy)
-            seams = SeamReconciler(overlapDuration: policy.overlapDuration)
-            decodeTask = nil
+            session.cutter = makeCutter(policy)
+            session.seams = SeamReconciler(overlapDuration: policy.overlapDuration)
         }
 
         let (capturedSamples, continuation) = AsyncStream<[Float]>.makeStream(
             bufferingPolicy: .unbounded
         )
-        sampleContinuation = continuation
-        captureTask = Task { [weak self] in
+        session.sampleContinuation = continuation
+        session.captureTask = Task { [weak self] in
             for await batch in capturedSamples {
-                await self?.appendSamples(batch, expectedToken: token)
+                await self?.appendSamples(batch, session: session)
             }
         }
 
@@ -250,30 +274,26 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
     ///
     /// Idempotent: safe to call when not recording.
     public func stop() async {
-        guard let input = audioInput else { return }  // truly idempotent: no-op
-        audioInput = nil
-        await input.stop()
+        guard let session = currentSession else { return }  // truly idempotent: no-op
+        currentSession = nil
+        await session.input.stop()
 
-        sampleContinuation?.finish()
-        sampleContinuation = nil
-        await captureTask?.value
-        captureTask = nil
-        // Cleared only after the drain above so the guard in appendSamples
-        // does not reject this session's own already-queued backlog while
-        // captureTask is still consuming it.
-        captureToken = nil
+        session.sampleContinuation?.finish()
+        session.sampleContinuation = nil
+        await session.captureTask?.value
+        session.captureTask = nil
 
-        if cutter != nil {
-            if let final = await cutter?.flush() {
-                enqueueDecode(of: final)
+        if let cutter = session.cutter {
+            if let final = await cutter.flush() {
+                enqueueDecode(of: final, session: session)
             }
-            await decodeTask?.value
-            cutter = nil
-            seams = nil
-            decodeTask = nil
+            await session.decodeTask?.value
+            session.cutter = nil
+            session.seams = nil
+            session.decodeTask = nil
         } else if let transcribeWindow {
-            let pcm = buffer
-            buffer.removeAll(keepingCapacity: true)
+            let pcm = session.buffer
+            session.buffer.removeAll(keepingCapacity: true)
             do {
                 let segments = try await transcribeWindow(pcm)
                 for segment in segments {
@@ -285,43 +305,58 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
                 )
             }
         } else {
-            buffer.removeAll(keepingCapacity: true)
+            session.buffer.removeAll(keepingCapacity: true)
         }
 
-        // Close segment streams for this recording session.
-        for (_, cont) in segmentContinuations {
-            cont.finish()
+        // Only finalize engine-wide state (segment streams, `.ready`) if no
+        // reentrant start() installed a new session while this stop() was
+        // suspended above — otherwise that session is still recording, and
+        // finishing its subscribers' streams or reporting `.ready` over it
+        // would be exactly the clobbering this method must not do.
+        if currentSession == nil {
+            for (_, cont) in segmentContinuations {
+                cont.finish()
+            }
+            segmentContinuations.removeAll(keepingCapacity: true)
+            emitStatus(.ready)
         }
-        segmentContinuations.removeAll(keepingCapacity: true)
-
-        emitStatus(.ready)
     }
 
-    private func appendSamples(_ samples: [Float], expectedToken: UUID) async {
-        guard captureToken == expectedToken else { return }
+    private func appendSamples(_ samples: [Float], session: Session) async {
+        // No `currentSession` guard here: `session` is always the one
+        // `captureTask` was created for, its storage is never shared with
+        // any other session, and `stop()` clears `currentSession` before
+        // draining `captureTask` (so a reentrant `start()` can begin) —
+        // guarding on identity here would reject this session's own
+        // still-draining backlog. A provider that keeps calling `onChunk`
+        // after `stop()` is already handled: `sampleContinuation.finish()`
+        // makes any further yield into it a no-op.
         switch timing {
         case .onStop:
-            buffer.append(contentsOf: samples)
+            session.buffer.append(contentsOf: samples)
         case .whileRecording:
-            if let window = await cutter?.ingest(samples) {
-                enqueueDecode(of: window)
+            if let window = await session.cutter?.ingest(samples) {
+                enqueueDecode(of: window, session: session)
             }
         }
     }
 
-    private func enqueueDecode(of window: AudioWindow) {
-        let previous = decodeTask
-        decodeTask = Task { [weak self] in
+    private func enqueueDecode(of window: AudioWindow, session: Session) {
+        // ponytail: unbounded decode queue. If decode is slower than realtime the
+        // chain grows without limit. Add a drop-oldest cap when a model that slow is
+        // actually used.
+        let previous = session.decodeTask
+        session.decodeTask = Task { [weak self] in
             await previous?.value
-            await self?.decodeAndEmit(window)
+            await self?.decodeAndEmit(window, session: session)
         }
     }
 
-    private func decodeAndEmit(_ window: AudioWindow) async {
+    private func decodeAndEmit(_ window: AudioWindow, session: Session) async {
         guard let transcribeWindow else { return }
         do {
             let decoded = try await transcribeWindow(window.samples)
-            let emitted = seams?.reconcile(decoded, from: window) ?? decoded
+            let emitted = session.seams?.reconcile(decoded, from: window) ?? decoded
             for segment in emitted { emitSegment(segment) }
         } catch {
             engineLog.error(

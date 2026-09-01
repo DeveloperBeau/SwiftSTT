@@ -44,6 +44,8 @@ public struct SeamReconciler: Sendable {
             )
         }
 
+        // ponytail: straddling segments are emitted whole, so a rare seam can repeat
+        // up to overlapDuration of words. Trim on word timings if it shows up in practice.
         let kept = absolute.filter { $0.end > seamTime }
 
         guard window.cut == .maximumDuration else {
@@ -56,10 +58,5 @@ public struct SeamReconciler: Sendable {
         let newSeam = candidates.min() ?? preferredSeam
         seamTime = newSeam
         return kept.filter { $0.end <= newSeam }
-    }
-
-    /// Forgets the current seam. Use when starting a new recording session.
-    public mutating func reset() {
-        seamTime = -.infinity
     }
 }
