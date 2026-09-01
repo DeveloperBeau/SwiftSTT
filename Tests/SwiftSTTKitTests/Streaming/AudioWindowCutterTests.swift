@@ -200,10 +200,14 @@ struct AudioWindowCutterTests {
         #expect(window.cut == .silence)
 
         // Sixth buffer starts the next window; flush it to observe startTime
-        // without waiting for it to fill or close on its own.
+        // without waiting for it to fill or close on its own. The silence cut
+        // carried its last overlapDuration (0.2s) of the 0.5s window forward,
+        // so the next window starts at 0.3 rather than at 0.5: the carried
+        // audio is deliberately re-covered, which is what gives the model
+        // context for the first word after the boundary.
         _ = await cutter.ingest(buffer())
         let flushed = try #require(await cutter.flush())
-        #expect(flushed.startTime == 0.5)
+        #expect(flushed.startTime == 0.3)
     }
 
     @Test("C12: failure case — empty buffer")
@@ -286,6 +290,35 @@ struct AudioWindowCutterTests {
         }
     }
 
+    @Test("C17: flush emits the trailing fragment the detector called silence")
+    func flushEmitsTrailingFragmentTheDetectorCalledSilence() async throws {
+        let policy = StreamingWindowPolicy(
+            maximumWindowDuration: 1.0, minimumWindowDuration: 0.2, overlapDuration: 0.2)
+        // Three speech buffers, a falling edge that closes a silence window,
+        // then two buffers the detector calls silence. On real speech those
+        // last two hold the end of the final sentence: an energy detector
+        // reading a quiet tail as silence is what cost this recording its last
+        // two words before the flush learned to emit them.
+        let cutter = makeCutter(policy: policy, verdicts: [true, true, true, false, false, false])
+
+        for _ in 0..<4 {
+            _ = await cutter.ingest(buffer())
+        }
+        for _ in 0..<2 {
+            _ = await cutter.ingest(buffer())
+        }
+
+        let flushed = try #require(
+            await cutter.flush(),
+            "the last window must not be dropped on the detector's word alone")
+        #expect(flushed.cut == .stop)
+        // 0.2s carried from the silence cut, plus the 0.2s the detector
+        // dismissed. The carry is what makes this safe: the window holds
+        // confirmed speech, so it is never a decode of pure silence.
+        #expect(abs(flushed.duration - 0.4) < 1e-9)
+        #expect(abs(flushed.startTime - 0.2) < 1e-9)
+    }
+
     @Test("C15: fuzz B — random verdicts, bounds only")
     func fuzzRandomVerdictsBoundsOnly() async {
         var generator = SeededGenerator(seed: 0xF00D_BEEF)
@@ -321,12 +354,29 @@ struct AudioWindowCutterTests {
                         "seed 0xF00D_BEEF iteration \(iteration): startTime not strictly increasing: \(previousWindow.startTime) -> \(window.startTime)"
                     )
                 }
-                if let previousWindow, previousWindow.cut == .silence,
-                    window.startTime < previousWindow.startTime + previousWindow.duration
-                {
-                    Issue.record(
-                        "seed 0xF00D_BEEF iteration \(iteration): window after a silence cut starts before the previous window ended"
-                    )
+                // Every cut but the last carries audio forward, so a window
+                // starts before the previous one ended by design. What must
+                // hold is that the carry is bounded: never more than the
+                // policy's overlap, and never so much that the window is
+                // re-covered rather than advanced.
+                if let previousWindow, previousWindow.cut != .stop {
+                    let previousEnd = previousWindow.startTime + previousWindow.duration
+                    // A gap is not checked for. `ingest` returns nil for a
+                    // window that held no speech, having already consumed and
+                    // discarded its audio, so two windows that arrive back to
+                    // back here can have any amount of dropped silence
+                    // between them.
+                    let carried = max(previousEnd - window.startTime, 0)
+                    if carried > policy.overlapDuration + 1e-9 {
+                        Issue.record(
+                            "seed 0xF00D_BEEF iteration \(iteration): carried \(carried) exceeds overlap \(policy.overlapDuration)"
+                        )
+                    }
+                    if carried > previousWindow.duration / 2 + 1e-9 {
+                        Issue.record(
+                            "seed 0xF00D_BEEF iteration \(iteration): carried \(carried) is more than half the \(previousWindow.duration) window it came from"
+                        )
+                    }
                 }
                 previousWindow = window
             }

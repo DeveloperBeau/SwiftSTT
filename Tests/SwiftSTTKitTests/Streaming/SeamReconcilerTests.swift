@@ -43,46 +43,43 @@ struct SeamReconcilerTests {
         #expect(emitted == [segment("hello", 12.5, 13.5), segment("world", 13.5, 15.0)])
     }
 
-    @Test("R2: forced cut picks the first segment end at or after preferredSeam")
-    func forcedCutPicksFirstEndAtOrAfterPreferredSeam() {
+    @Test("R2: a forced cut emits its own tail, because only the next window can know it repeats")
+    func forcedCutEmitsItsOwnTail() {
         var reconciler = SeamReconciler(overlapDuration: 1.5)
         let win = window(startingAt: 0, lasting: 15, cut: .maximumDuration)
         let decoded = [
-            segment("a", 4.0, 5.0),
-            segment("b", 9.0, 10.0),
-            segment("c", 12.0, 13.0),
-            segment("d", 14.6, 14.8),
+            segment("alpha", 4.0, 5.0),
+            segment("bravo", 9.0, 10.0),
+            segment("charlie", 12.0, 13.0),
+            segment("delta", 14.6, 14.8),
         ]
 
+        // The carried audio is re-decoded by the window after this one, and
+        // the duplicate is removed there. Holding "delta" back here instead
+        // would lose it outright if capture stopped before another window.
         let emitted = reconciler.reconcile(decoded, from: win)
 
         #expect(emitted == decoded)
     }
 
-    @Test("R2b: forced cut with two candidates at or after preferredSeam picks the smaller end")
-    func forcedCutWithMultipleCandidatesPicksSmallerEnd() {
+    @Test("R2b: the longest matching run is dropped, not the first one found")
+    func longestMatchingRunIsDropped() {
         var reconciler = SeamReconciler(overlapDuration: 1.5)
-        let win = window(startingAt: 0, lasting: 15, cut: .maximumDuration)
-        let decoded = [
-            segment("a", 4.0, 5.0),
-            segment("b", 9.0, 10.0),
-            segment("c", 12.0, 13.0),
-            segment("d", 13.6, 14.0),
-            segment("e", 14.6, 14.8),
-        ]
+        _ = reconciler.reconcile(
+            [segment("the window carries the tail", 12.0, 15.0)],
+            from: window(startingAt: 0, lasting: 15, cut: .maximumDuration)
+        )
 
-        let emitted = reconciler.reconcile(decoded, from: win)
+        // "the" alone matches the emitted tail's last word, and so does the
+        // three-word run "carries the tail". Taking the short match would
+        // re-emit "carries the tail" a second time, so the longest run wins.
+        let emitted = reconciler.reconcile(
+            [segment("carries the tail onward now", 0.0, 2.0)],
+            from: window(startingAt: 13.5, lasting: 5, cut: .silence)
+        )
 
-        // preferredSeam is 13.5; both "d" (14.0) and "e" (14.8) clear it, so
-        // there are two candidates. The seam must land on the smaller of the
-        // two, dropping "e" until the next window's overlap covers it.
-        #expect(
-            emitted == [
-                segment("a", 4.0, 5.0),
-                segment("b", 9.0, 10.0),
-                segment("c", 12.0, 13.0),
-                segment("d", 13.6, 14.0),
-            ])
+        #expect(emitted.count == 1)
+        #expect(emitted.first?.text == "onward now")
     }
 
     @Test("R3: no candidate at or after preferredSeam, then nothing lost across the gap")
@@ -100,55 +97,57 @@ struct SeamReconcilerTests {
         #expect(nextEmitted == [segment("next", 13.5, 14.5)])
     }
 
-    @Test("R4: the next window drops what the previous one emitted")
+    @Test("R4: the next window drops the words the previous one already emitted")
     func nextWindowDropsWhatWasAlreadyEmitted() {
         var reconciler = SeamReconciler(overlapDuration: 1.5)
         let win = window(startingAt: 0, lasting: 15, cut: .maximumDuration)
         _ = reconciler.reconcile(
             [
-                segment("a", 4.0, 5.0),
-                segment("b", 9.0, 10.0),
-                segment("c", 12.0, 13.0),
-                segment("d", 14.6, 14.8),
+                segment("alpha", 4.0, 5.0),
+                segment("bravo", 9.0, 10.0),
+                segment("charlie", 12.0, 13.0),
+                segment("delta echo", 13.8, 14.8),
             ],
             from: win
         )
 
+        // The carried 1.5 seconds hold "delta echo", so the next window
+        // decodes them again before reaching new speech. Punctuation and case
+        // differ between the two readings, as they do in practice, and must
+        // not stop the match.
         let nextWindow = window(startingAt: 13.5, lasting: 5, cut: .silence)
-        let nextDecoded = [segment("dup", 0.0, 1.3), segment("fresh", 1.3, 2.5)]
+        let nextDecoded = [segment("Delta echo,", 0.3, 1.3), segment("fresh", 1.3, 2.5)]
         let emitted = reconciler.reconcile(nextDecoded, from: nextWindow)
 
         #expect(emitted == [segment("fresh", 14.8, 16.0)])
     }
 
-    @Test("R5: a straddler is kept whole")
-    func straddlerIsKeptWhole() {
+    @Test("R5: a segment the overlap ends partway through keeps its remaining words")
+    func straddlerKeepsItsRemainingWords() {
         var reconciler = SeamReconciler(overlapDuration: 1.5)
         let win = window(startingAt: 0, lasting: 15, cut: .maximumDuration)
         _ = reconciler.reconcile(
-            [
-                segment("a", 4.0, 5.0),
-                segment("b", 9.0, 10.0),
-                segment("c", 12.0, 13.0),
-                segment("d", 14.6, 14.8),
-            ],
+            [segment("alpha bravo charlie", 12.0, 14.8)],
             from: win
         )
 
-        // Spec correction: the spec's R5 text pairs window(startingAt: 13.5)
-        // with local segment (0.5, 2.0), which arithmetically gives absolute
-        // (14.0, 15.5), not the stated (14.0, 16.0). Using local end 2.5
-        // reconciles the arithmetic while preserving the straddling property
-        // (14.0 < seamTime 14.8 < 16.0) and the stated expected output.
+        // The model does not have to break the second reading where the first
+        // one broke: here the repeated "charlie" and the new speech land in a
+        // single segment. Emitting it whole would duplicate "charlie", and
+        // dropping it whole would lose the rest, so it is trimmed.
         let nextWindow = window(startingAt: 13.5, lasting: 5, cut: .silence)
-        let nextDecoded = [segment("severedword", 0.5, 2.5)]
-        let emitted = reconciler.reconcile(nextDecoded, from: nextWindow)
+        let emitted = reconciler.reconcile(
+            [segment("charlie delta echo", 0.5, 2.5)], from: nextWindow)
 
-        #expect(emitted == [segment("severedword", 14.0, 16.0)])
+        #expect(emitted.count == 1)
+        #expect(emitted.first?.text == "delta echo")
+        #expect(emitted.first?.end == 16.0)
+        // The start advances past the dropped word rather than staying at 14.0.
+        #expect((emitted.first?.start ?? 0) > 14.0)
     }
 
-    @Test("R6: a silence cut clears the seam")
-    func silenceCutClearsTheSeam() {
+    @Test("R6: a window starting exactly where the previous ended is not searched for overlap")
+    func adjacentWindowIsNotSearchedForOverlap() {
         var reconciler = SeamReconciler(overlapDuration: 1.5)
         let win = window(startingAt: 0, lasting: 15, cut: .maximumDuration)
         _ = reconciler.reconcile(
@@ -163,6 +162,8 @@ struct SeamReconcilerTests {
 
         _ = reconciler.reconcile([], from: window(startingAt: 13.5, lasting: 5, cut: .silence))
 
+        // 13.5 + 5 == 18.5, so this window re-covers nothing and every word
+        // it decodes is new by construction.
         let finalWindow = window(startingAt: 18.5, lasting: 5, cut: .stop)
         let emitted = reconciler.reconcile([segment("early", 0.0, 0.2)], from: finalWindow)
 
@@ -206,6 +207,48 @@ struct SeamReconcilerTests {
         let followingEmitted = reconciler.reconcile(
             [segment("after", 0.0, 0.5)], from: followingWindow)
         #expect(followingEmitted == [segment("after", 4.0, 4.5)])
+    }
+
+    @Test("R13: the two readings of the overlap disagree on a word and the match still holds")
+    func disagreeingReadingsStillMatch() {
+        var reconciler = SeamReconciler(overlapDuration: 1.5)
+        _ = reconciler.reconcile(
+            [segment("when speech runs low", 12.0, 15.0)],
+            from: window(startingAt: 0, lasting: 15, cut: .maximumDuration)
+        )
+
+        // Real disagreement, taken from what whisper.cpp actually returned for
+        // this audio: the first reading ends the truncated window on "low",
+        // the second hears the whole word as "long". Three of the four words
+        // agree, and requiring all four to agree finds no overlap at all and
+        // emits the phrase twice.
+        let emitted = reconciler.reconcile(
+            [segment("when speech runs long without pausing", 0.0, 3.0)],
+            from: window(startingAt: 13.5, lasting: 5, cut: .silence)
+        )
+
+        #expect(emitted.count == 1)
+        #expect(emitted.first?.text == "long without pausing")
+    }
+
+    @Test("R14: a single common word away from the seam is not treated as overlap")
+    func loneCommonWordAwayFromSeamIsNotOverlap() {
+        var reconciler = SeamReconciler(overlapDuration: 1.5)
+        _ = reconciler.reconcile(
+            [segment("alpha bravo charlie", 12.0, 15.0)],
+            from: window(startingAt: 0, lasting: 15, cut: .maximumDuration)
+        )
+
+        // "charlie" appears in both, but three words into the new window
+        // rather than at its start. Treating that as the seam would drop
+        // "delta echo", which was never emitted. One word only counts when it
+        // is the seam itself, which R7 covers.
+        let decoded = [segment("delta echo charlie foxtrot", 0.0, 3.0)]
+        let emitted = reconciler.reconcile(
+            decoded, from: window(startingAt: 13.5, lasting: 5, cut: .silence))
+
+        #expect(emitted.count == 1)
+        #expect(emitted.first?.text == "delta echo charlie foxtrot")
     }
 
     // MARK: - R11 / R12 fuzz harness
@@ -273,7 +316,13 @@ struct SeamReconcilerTests {
                 TranscriptionSegment(text: $0.text, start: $0.start - audioStart, end: $0.end - audioStart)
             }
 
-            let tentativeNextCursor = audioEnd - (forced ? overlapDuration : 0)
+            // Every cut but the last carries audio forward, silence cuts
+            // included, and the cutter caps the carry at half the closed
+            // window so it always makes progress. A generator that overlapped
+            // only forced cuts would leave the silence seam, the one real
+            // audio actually produces, untested.
+            let carried = min(overlapDuration, windowLength / 2)
+            let tentativeNextCursor = audioEnd - carried
             let isLast = tentativeNextCursor >= total || safetyCounter > 1_000
             let cut: WindowCutCause = isLast ? .stop : (forced ? .maximumDuration : .silence)
 
