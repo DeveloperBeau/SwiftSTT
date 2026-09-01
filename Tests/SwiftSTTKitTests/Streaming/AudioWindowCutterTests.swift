@@ -290,6 +290,41 @@ struct AudioWindowCutterTests {
         }
     }
 
+    @Test("C18: carried audio does not count toward the minimum window duration")
+    func carriedAudioDoesNotCountTowardTheMinimum() async throws {
+        let policy = StreamingWindowPolicy(
+            maximumWindowDuration: 10, minimumWindowDuration: 0.4, overlapDuration: 0.2)
+        let cutter = makeCutter(
+            policy: policy,
+            verdicts: [true, true, true, true, false, true, true, false, true, true, false])
+
+        // First boundary: 0.5s of speech, none of it carried, so it cuts.
+        var window: AudioWindow?
+        for _ in 0..<5 {
+            window = await cutter.ingest(buffer())
+        }
+        let first = try #require(window)
+        #expect(abs(first.duration - 0.5) < 1e-9)
+
+        // Second boundary: 0.5s pending, but 0.2s of that was carried from the
+        // first window. Only 0.3s is new, short of the 0.4s minimum, so the
+        // boundary is ignored. Counting the carry here is what produced the
+        // 1.0s-of-new-audio windows that came back mangled on real speech.
+        for _ in 0..<3 {
+            window = await cutter.ingest(buffer())
+        }
+        #expect(window == nil, "a window of mostly carried audio must not close on a boundary")
+
+        // Third boundary: now 0.6s is new, so it cuts, and it starts where the
+        // first window's carry began rather than where that window ended.
+        for _ in 0..<3 {
+            window = await cutter.ingest(buffer())
+        }
+        let second = try #require(window)
+        #expect(abs(second.startTime - 0.3) < 1e-9)
+        #expect(abs(second.duration - 0.8) < 1e-9)
+    }
+
     @Test("C17: flush emits the trailing fragment the detector called silence")
     func flushEmitsTrailingFragmentTheDetectorCalledSilence() async throws {
         let policy = StreamingWindowPolicy(

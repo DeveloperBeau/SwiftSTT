@@ -52,7 +52,16 @@ public actor AudioWindowCutter {
         elapsedTime += Double(samples.count) / Double(policy.sampleRate)
 
         let pendingDuration = Double(pending.count) / Double(policy.sampleRate)
-        if boundary != nil, pendingDuration >= policy.minimumWindowDuration {
+        // Carried audio does not count toward the minimum. It has been
+        // transcribed once already, so a window made mostly of carry gives the
+        // model almost nothing new while still paying a full decode, and the
+        // little it does contain arrives with the window's edges through it:
+        // the shortest windows on real speech are the ones that came back
+        // mangled. The maximum still counts every sample, because that bounds
+        // what is handed to the model rather than what is learned from it.
+        let newAudioDuration =
+            Double(pending.count - carriedSampleCount) / Double(policy.sampleRate)
+        if boundary != nil, newAudioDuration >= policy.minimumWindowDuration {
             return closeWindow(cause: .silence)
         } else if pendingDuration >= policy.maximumWindowDuration {
             return closeWindow(cause: .maximumDuration)
