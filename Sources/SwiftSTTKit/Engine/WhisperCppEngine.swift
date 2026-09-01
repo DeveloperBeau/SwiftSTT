@@ -283,6 +283,26 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
         }
     }
 
+    /// Releases the loaded model, giving back the memory and the GPU
+    /// resources it holds. Stops recording first if a session is running.
+    ///
+    /// Call this before a process that has loaded a model exits.
+    /// whisper.cpp's Metal backend tears its devices down during `exit()`
+    /// and asserts, as it does so, that nothing still holds buffers from
+    /// them. A model left loaded still does, and the process aborts on its
+    /// way out instead of exiting cleanly. Deinitialisation is not a
+    /// substitute: an engine still reachable at `exit()` is never
+    /// deinitialised at all, which is exactly the case for an engine held
+    /// by a singleton, an app delegate, or any long-lived view model.
+    ///
+    /// A later ``prepare()`` loads the model again.
+    public func unload() async {
+        await stop()
+        loaded = nil
+        transcribeWindow = nil
+        emitStatus(.idle)
+    }
+
     /// Begins audio capture and buffering.
     ///
     /// Throws if no model is loaded.

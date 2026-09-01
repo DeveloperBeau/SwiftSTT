@@ -689,4 +689,26 @@ private actor StatusCollector {
     private var items: [WhisperEngineStatus] = []
     func append(_ item: WhisperEngineStatus) { items.append(item) }
     var all: [WhisperEngineStatus] { items }
+    @Test("E13: unload releases the model, so a process holding an engine can exit cleanly")
+    func unloadReleasesTheModel() async throws {
+        let provider = MockAudioInput([[Float](repeating: 0.5, count: 1_600)])
+        let engine = WhisperCppEngine(
+            storage: WhisperModelStorage(defaults: UserDefaults(suiteName: UUID().uuidString)!),
+            audioFactory: { provider },
+            timing: .onStop,
+            transcribeWindow: { _ in [] }
+        )
+
+        try await engine.start()
+        await engine.unload()
+
+        // whisper.cpp asserts during its Metal teardown at exit() that nothing
+        // still holds buffers from its devices, and an engine reachable at exit
+        // is never deinitialised, so releasing has to be something a caller can
+        // ask for. start() refusing is how the release is observable from here.
+        await #expect(throws: SwiftSTTError.self) {
+            try await engine.start()
+        }
+    }
+
 }
