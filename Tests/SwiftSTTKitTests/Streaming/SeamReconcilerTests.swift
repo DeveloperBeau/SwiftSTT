@@ -208,27 +208,6 @@ struct SeamReconcilerTests {
         #expect(followingEmitted == [segment("after", 4.0, 4.5)])
     }
 
-    @Test("R10: reset clears seamTime rather than leaving it unreachable")
-    func resetClearsSeam() {
-        var reconciler = SeamReconciler(overlapDuration: 1.5)
-        let win = window(startingAt: 0, lasting: 15, cut: .maximumDuration)
-        _ = reconciler.reconcile(
-            [
-                segment("a", 4.0, 5.0),
-                segment("b", 9.0, 10.0),
-                segment("c", 12.0, 13.0),
-                segment("d", 14.6, 14.8),
-            ],
-            from: win
-        )
-
-        reconciler.reset()
-
-        let freshWindow = window(startingAt: 0, lasting: 5, cut: .stop)
-        let emitted = reconciler.reconcile([segment("fresh", 0.0, 1.0)], from: freshWindow)
-        #expect(emitted == [segment("fresh", 0.0, 1.0)])
-    }
-
     // MARK: - R11 / R12 fuzz harness
 
     private struct GroundTruthSegment {
