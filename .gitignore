@@ -67,3 +67,6 @@ ideas/
 
 # Agent tooling scratch
 .evolver/
+
+# /ship per-checkout config
+.ship-lanes.conf
