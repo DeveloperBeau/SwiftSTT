@@ -69,6 +69,7 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
 
     private var statusContinuations: [UUID: AsyncStream<WhisperEngineStatus>.Continuation] = [:]
     private var segmentContinuations: [UUID: AsyncStream<TranscriptionSegment>.Continuation] = [:]
+    private var updateContinuations: [UUID: AsyncStream<TranscriptUpdate>.Continuation] = [:]
     private var currentStatus: WhisperEngineStatus = .idle
 
     private struct Loaded {
@@ -135,6 +136,12 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
     /// Under ``TranscriptionTiming/onStop`` segments arrive in one burst when
     /// recording stops. Under ``TranscriptionTiming/whileRecording(_:)`` they
     /// arrive incrementally as each audio window is decoded during capture.
+    ///
+    /// > Important: this stream is append-only, so under
+    /// > ``TranscriptionTiming/whileRecording(_:)`` it cannot express the one
+    /// > thing streaming needs to say: that a window's last words were a guess
+    /// > the next window has since corrected. Those words arrive here and stay.
+    /// > Use ``transcriptStream()`` for a transcript that takes them back.
     public nonisolated func segmentStream() -> AsyncStream<TranscriptionSegment> {
         AsyncStream { continuation in
             let id = UUID()
@@ -144,6 +151,32 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
             continuation.onTermination = { _ in
                 Task { [weak self] in
                     await self?.removeSegmentContinuation(id: id)
+                }
+            }
+        }
+    }
+
+    /// Returns a stream of transcript updates, each appending segments and
+    /// occasionally withdrawing the ones it supersedes.
+    ///
+    /// This is the whole transcript's stream, not just its additions. A window
+    /// cut through speech is decoded without the audio that follows it, and
+    /// what the model made of its final words is a guess. Emitting the guess
+    /// immediately is what keeps streaming worth doing; withdrawing it when the
+    /// next window disagrees is what keeps the transcript right. Apply each
+    /// update with ``TranscriptUpdate/apply(to:)``.
+    ///
+    /// Under ``TranscriptionTiming/onStop`` nothing is ever withdrawn: the
+    /// whole recording is decoded at once, with no window edges to guess at.
+    public nonisolated func transcriptStream() -> AsyncStream<TranscriptUpdate> {
+        AsyncStream { continuation in
+            let id = UUID()
+            Task { [weak self] in
+                await self?.registerUpdateContinuation(id: id, continuation: continuation)
+            }
+            continuation.onTermination = { _ in
+                Task { [weak self] in
+                    await self?.removeUpdateContinuation(id: id)
                 }
             }
         }
@@ -172,6 +205,17 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
         segmentContinuations.removeValue(forKey: id)
     }
 
+    private func registerUpdateContinuation(
+        id: UUID,
+        continuation: AsyncStream<TranscriptUpdate>.Continuation
+    ) {
+        updateContinuations[id] = continuation
+    }
+
+    private func removeUpdateContinuation(id: UUID) {
+        updateContinuations.removeValue(forKey: id)
+    }
+
     private func emitStatus(_ status: WhisperEngineStatus) {
         currentStatus = status
         for (_, cont) in statusContinuations {
@@ -180,8 +224,17 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
     }
 
     private func emitSegment(_ segment: TranscriptionSegment) {
+        emitUpdate(TranscriptUpdate(segments: [segment]))
+    }
+
+    /// Sends `update` to both streams. Subscribers to ``segmentStream()`` see
+    /// only what it appends, having no way to be told about a retraction.
+    private func emitUpdate(_ update: TranscriptUpdate) {
+        for (_, cont) in updateContinuations {
+            cont.yield(update)
+        }
         for (_, cont) in segmentContinuations {
-            cont.yield(segment)
+            for segment in update.segments { cont.yield(segment) }
         }
     }
 
@@ -314,6 +367,10 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
         // finishing its subscribers' streams or reporting `.ready` over it
         // would be exactly the clobbering this method must not do.
         if currentSession == nil {
+            for (_, cont) in updateContinuations {
+                cont.finish()
+            }
+            updateContinuations.removeAll(keepingCapacity: true)
             for (_, cont) in segmentContinuations {
                 cont.finish()
             }
@@ -356,8 +413,10 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
         guard let transcribeWindow else { return }
         do {
             let decoded = try await transcribeWindow(window.samples)
-            let emitted = session.seams?.reconcile(decoded, from: window) ?? decoded
-            for segment in emitted { emitSegment(segment) }
+            let update =
+                session.seams?.reconcile(decoded, from: window)
+                ?? TranscriptUpdate(segments: decoded)
+            emitUpdate(update)
         } catch {
             engineLog.error(
                 "transcribe failed: \(String(describing: error), privacy: .private)"
