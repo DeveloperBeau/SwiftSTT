@@ -41,7 +41,9 @@ public struct SeamReconciler: Sendable {
     /// still reach.
     private var emitted: [TranscriptionSegment] = []
 
-    /// Where the previous window's audio ended. A window starting before that
+    /// Where the previous window's audio ended.
+    ///
+    /// A window starting before that
     /// re-covers the difference, and the difference is the only place either a
     /// duplicate or an unconfirmed word can come from.
     private var previousWindowEndTime: TimeInterval?
@@ -66,6 +68,9 @@ public struct SeamReconciler: Sendable {
     /// - Parameters:
     ///   - segments: what the model returned for `window`, in window-local time.
     ///   - window: the window those segments were decoded from.
+    /// - Returns: an update appending this window's new segments, and
+    ///   withdrawing the previous window's trailing words when this one
+    ///   disagrees with them.
     public mutating func reconcile(
         _ segments: [TranscriptionSegment],
         from window: AudioWindow
@@ -189,7 +194,8 @@ public struct SeamReconciler: Sendable {
         }
 
         var pairs: [(earlier: Int, later: Int)] = []
-        var i = 0, j = 0
+        var i = 0
+        var j = 0
         while i < earlier.count, j < later.count {
             if earlier[i] == later[j] {
                 pairs.append((earlier: i, later: j))
@@ -205,7 +211,9 @@ public struct SeamReconciler: Sendable {
     }
 
     /// One whitespace-separated token, in the form it is printed and in the
-    /// form it is compared. Comparison folds case and drops punctuation, so
+    /// form it is compared.
+    ///
+    /// Comparison folds case and drops punctuation, so
     /// `"boundary."` and `"boundary,"` count as the same word. A token of pure
     /// punctuation compares as empty and never takes part in an alignment.
     private struct Token {
@@ -238,13 +246,14 @@ public struct SeamReconciler: Sendable {
     }
 }
 
-private extension TranscriptionSegment {
+extension TranscriptionSegment {
 
     /// Returns this segment without its first `count` words, its start advanced
     /// to where those words are estimated to end.
-    func droppingLeadingWords(_ count: Int) -> TranscriptionSegment {
+    fileprivate func droppingLeadingWords(_ count: Int) -> TranscriptionSegment {
         let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
-        guard count > 0, let cut = SeamReconciler.tokenIndex(past: count, in: text), cut < words.count
+        guard count > 0, let cut = SeamReconciler.tokenIndex(past: count, in: text),
+            cut < words.count
         else { return self }
         let timings = proportionalWordTimings()
         let advancedStart = cut <= timings.count ? timings[cut - 1].end : start
@@ -257,9 +266,10 @@ private extension TranscriptionSegment {
 
     /// Returns this segment cut down to its first `count` words, its end pulled
     /// back to where those words are estimated to finish.
-    func keepingLeadingWords(_ count: Int) -> TranscriptionSegment {
+    fileprivate func keepingLeadingWords(_ count: Int) -> TranscriptionSegment {
         let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
-        guard count > 0, let cut = SeamReconciler.tokenIndex(past: count, in: text), cut < words.count
+        guard count > 0, let cut = SeamReconciler.tokenIndex(past: count, in: text),
+            cut < words.count
         else { return self }
         let timings = proportionalWordTimings()
         let pulledBackEnd = cut <= timings.count ? timings[cut - 1].end : end

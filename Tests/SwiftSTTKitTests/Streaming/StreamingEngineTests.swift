@@ -115,7 +115,9 @@ private actor ScriptedVoiceActivityDetector: VoiceActivityDetector {
     func reset() async { index = 0 }
 }
 
-private func segment(_ text: String, _ start: TimeInterval, _ end: TimeInterval) -> TranscriptionSegment {
+private func segment(_ text: String, _ start: TimeInterval, _ end: TimeInterval)
+    -> TranscriptionSegment
+{
     TranscriptionSegment(text: text, start: start, end: end)
 }
 
@@ -156,7 +158,8 @@ private func makeEngine(
             AudioWindowCutter(
                 policy: policy,
                 detector: ScriptedVoiceActivityDetector(verdicts),
-                refiner: VADBoundaryRefiner(startConsecutive: 1, endConsecutive: 1, sampleRate: 16_000)
+                refiner: VADBoundaryRefiner(
+                    startConsecutive: 1, endConsecutive: 1, sampleRate: 16_000)
             )
         }
     )
@@ -251,7 +254,8 @@ struct StreamingEngineTests {
         let buffers = Array(repeating: buffer, count: 9)
         let provider = MockAudioInput(buffers)
         let decoder = ScriptedWindowDecoder([.segments([segment("alpha", 0, 0.5)])])
-        let policy = StreamingWindowPolicy(maximumWindowDuration: 10, minimumWindowDuration: 0.5, overlapDuration: 1)
+        let policy = StreamingWindowPolicy(
+            maximumWindowDuration: 10, minimumWindowDuration: 0.5, overlapDuration: 1)
         let engine = makeEngine(
             provider: provider,
             timing: .whileRecording(policy),
@@ -267,7 +271,7 @@ struct StreamingEngineTests {
         #expect(received?.text == "alpha")
     }
 
-    @Test("E2: false-positive — onStop must not stream")
+    @Test("E2: false-positive, onStop must not stream")
     func onStopDoesNotStreamDuringCapture() async throws {
         let buffer = Array(repeating: Float(0.5), count: 1_600)
         let buffers = Array(repeating: buffer, count: 9)
@@ -302,7 +306,8 @@ struct StreamingEngineTests {
             .slow([segment("one", 0, 0.5)], nanoseconds: 200_000_000),
             .segments([segment("two", 0, 0.5)]),
         ])
-        let policy = StreamingWindowPolicy(maximumWindowDuration: 1.0, minimumWindowDuration: 0.5, overlapDuration: 0.25)
+        let policy = StreamingWindowPolicy(
+            maximumWindowDuration: 1.0, minimumWindowDuration: 0.5, overlapDuration: 0.25)
         let engine = makeEngine(
             provider: provider,
             timing: .whileRecording(policy),
@@ -336,7 +341,8 @@ struct StreamingEngineTests {
             .segments([segment("first", 0.0, 0.4)]),
             .segments([segment("second", 0.0, 0.4)]),
         ])
-        let policy = StreamingWindowPolicy(maximumWindowDuration: 1.0, minimumWindowDuration: 0.5, overlapDuration: 0.25)
+        let policy = StreamingWindowPolicy(
+            maximumWindowDuration: 1.0, minimumWindowDuration: 0.5, overlapDuration: 0.25)
         let engine = makeEngine(
             provider: provider,
             timing: .whileRecording(policy),
@@ -361,7 +367,7 @@ struct StreamingEngineTests {
         #expect(segments == [segment("first", 0.0, 0.4), segment("second", 0.75, 1.15)])
     }
 
-    @Test("E5: failure case — a decoder error does not kill the session")
+    @Test("E5: failure case, a decoder error does not kill the session")
     func decoderErrorDoesNotKillSession() async throws {
         let buffer = Array(repeating: Float(0.5), count: 16_000)
         let buffers = [buffer, buffer]
@@ -370,7 +376,8 @@ struct StreamingEngineTests {
             .failure(.decoderFailure("boom")),
             .segments([segment("survived", 0, 0.5)]),
         ])
-        let policy = StreamingWindowPolicy(maximumWindowDuration: 1.0, minimumWindowDuration: 0.5, overlapDuration: 0.25)
+        let policy = StreamingWindowPolicy(
+            maximumWindowDuration: 1.0, minimumWindowDuration: 0.5, overlapDuration: 0.25)
         let engine = makeEngine(
             provider: provider,
             timing: .whileRecording(policy),
@@ -417,7 +424,8 @@ struct StreamingEngineTests {
             .slow([segment("two", 0, 0.5)], nanoseconds: 150_000_000),
             .slow([segment("three", 0, 0.5)], nanoseconds: 150_000_000),
         ])
-        let policy = StreamingWindowPolicy(maximumWindowDuration: 1.0, minimumWindowDuration: 0.5, overlapDuration: 0.25)
+        let policy = StreamingWindowPolicy(
+            maximumWindowDuration: 1.0, minimumWindowDuration: 0.5, overlapDuration: 0.25)
         let engine = makeEngine(
             provider: provider,
             timing: .whileRecording(policy),
@@ -448,7 +456,8 @@ struct StreamingEngineTests {
         let buffers = [buffer, buffer, buffer]
         let provider = MockAudioInput(buffers)
         let decoder = ScriptedWindowDecoder([.segments([segment("tail", 0, 0.3)])])
-        let policy = StreamingWindowPolicy(maximumWindowDuration: 10, minimumWindowDuration: 0.5, overlapDuration: 1)
+        let policy = StreamingWindowPolicy(
+            maximumWindowDuration: 10, minimumWindowDuration: 0.5, overlapDuration: 1)
         let engine = makeEngine(
             provider: provider,
             timing: .whileRecording(policy),
@@ -484,7 +493,8 @@ struct StreamingEngineTests {
         let buffers = [buffer, buffer, buffer]
         let provider = MockAudioInput(buffers)
         let decoder = ScriptedWindowDecoder([.segments([segment("tail", 0, 0.3)])])
-        let policy = StreamingWindowPolicy(maximumWindowDuration: 10, minimumWindowDuration: 0.5, overlapDuration: 1)
+        let policy = StreamingWindowPolicy(
+            maximumWindowDuration: 10, minimumWindowDuration: 0.5, overlapDuration: 1)
         let engine = makeEngine(
             provider: provider,
             timing: .whileRecording(policy),
@@ -508,7 +518,8 @@ struct StreamingEngineTests {
             let buffer = Array(repeating: Float(0.5), count: 1_600)
             let provider = MockAudioInput([buffer])
             let decoder = ScriptedWindowDecoder([.segments([])])
-            let engine = makeEngine(provider: provider, timing: timing, decoder: decoder, verdicts: [true])
+            let engine = makeEngine(
+                provider: provider, timing: timing, decoder: decoder, verdicts: [true])
 
             let statusStream = engine.statusStream()
             let statuses = StatusCollector()
@@ -529,7 +540,7 @@ struct StreamingEngineTests {
         }
     }
 
-    @Test("E10: flagship — no loss and no duplication across the actor seam")
+    @Test("E10: flagship, no loss and no duplication across the actor seam")
     func noLossNoDuplicationAcrossActorSeam() async throws {
         let buffer = Array(repeating: Float(0.5), count: 1_600)
         let buffers = Array(repeating: buffer, count: 13)
@@ -538,7 +549,8 @@ struct StreamingEngineTests {
             .segments([segment("alpha", 0.0, 0.6), segment("beta", 0.6, 0.9)]),
             .segments([segment("beta", 0.0, 0.1), segment("gamma", 0.1, 0.2)]),
         ])
-        let policy = StreamingWindowPolicy(maximumWindowDuration: 1.0, minimumWindowDuration: 0.5, overlapDuration: 0.25)
+        let policy = StreamingWindowPolicy(
+            maximumWindowDuration: 1.0, minimumWindowDuration: 0.5, overlapDuration: 0.25)
         let engine = makeEngine(
             provider: provider,
             timing: .whileRecording(policy),
@@ -568,7 +580,7 @@ struct StreamingEngineTests {
             ])
     }
 
-    @Test("E11: a reentrant start() during an in-flight stop() does not clobber session 2 — onStop")
+    @Test("E11: a reentrant start() during an in-flight stop() does not clobber session 2 (onStop)")
     func reentrantStartDuringInFlightStopOnStop() async throws {
         let slowProvider = SlowStopMockAudioInput([], stopDelayNanoseconds: 300_000_000)
         let session2Samples = (1...200).map { Float($0) }
@@ -614,14 +626,17 @@ struct StreamingEngineTests {
         #expect(calls.contains(session2Samples))
     }
 
-    @Test("E12: a reentrant start() during an in-flight stop() does not clobber session 2 — whileRecording")
+    @Test(
+        "E12: a reentrant start() during an in-flight stop() does not clobber session 2 (whileRecording)"
+    )
     func reentrantStartDuringInFlightStopWhileRecording() async throws {
         let slowProvider = SlowStopMockAudioInput([], stopDelayNanoseconds: 300_000_000)
         let session2Buffer = Array(repeating: Float(0.5), count: 1_600)
         let fastProvider = MockAudioInput([session2Buffer, session2Buffer, session2Buffer])
         let providers = SequentialProviders([slowProvider, fastProvider])
         let decoder = ScriptedWindowDecoder([.segments([segment("session2", 0, 0.3)])])
-        let policy = StreamingWindowPolicy(maximumWindowDuration: 10, minimumWindowDuration: 0.2, overlapDuration: 1)
+        let policy = StreamingWindowPolicy(
+            maximumWindowDuration: 10, minimumWindowDuration: 0.2, overlapDuration: 1)
 
         let engine = WhisperCppEngine(
             storage: WhisperModelStorage(defaults: UserDefaults(suiteName: UUID().uuidString)!),
@@ -632,7 +647,8 @@ struct StreamingEngineTests {
                 AudioWindowCutter(
                     policy: policy,
                     detector: ScriptedVoiceActivityDetector(Array(repeating: true, count: 10)),
-                    refiner: VADBoundaryRefiner(startConsecutive: 1, endConsecutive: 1, sampleRate: 16_000)
+                    refiner: VADBoundaryRefiner(
+                        startConsecutive: 1, endConsecutive: 1, sampleRate: 16_000)
                 )
             }
         )

@@ -36,7 +36,7 @@ struct StreamingWindowPolicyTests {
         #expect(policy.overlapDuration == 2)
     }
 
-    @Test("P4: false-positive validation — clamps do not fire on valid input")
+    @Test("P4: false-positive validation, clamps do not fire on valid input")
     func clampsLeaveValidInputAlone() {
         let policy = StreamingWindowPolicy(
             maximumWindowDuration: 20,
@@ -48,7 +48,7 @@ struct StreamingWindowPolicyTests {
         #expect(policy.overlapDuration == 2)
     }
 
-    @Test("P5: false-negative validation — just past each limit still clamps")
+    @Test("P5: false-negative validation, just past each limit still clamps")
     func clampsFireJustPastLimit() {
         let policy = StreamingWindowPolicy(
             maximumWindowDuration: 4,
@@ -59,7 +59,7 @@ struct StreamingWindowPolicyTests {
         #expect(policy.overlapDuration == 2)
     }
 
-    @Test("P6: fuzz — clamp invariants hold for 500 generated policies")
+    @Test("P6: fuzz, clamp invariants hold for 500 generated policies")
     func fuzzClampInvariants() {
         var generator = SeededGenerator(seed: 0xF00D_BEEF)
         for iteration in 0..<500 {
@@ -93,7 +93,7 @@ struct StreamingWindowPolicyTests {
         }
     }
 
-    @Test("P8: boundary — a non-positive maximumWindowDuration is floored, not passed through")
+    @Test("P8: boundary, a non-positive maximumWindowDuration is floored, not passed through")
     func nonPositiveMaximumIsFloored() {
         let zero = StreamingWindowPolicy(maximumWindowDuration: 0)
         #expect(zero.maximumWindowDuration == 0.1)
@@ -109,12 +109,15 @@ struct StreamingWindowPolicyTests {
     @Test("P7: Equatable")
     func equatable() {
         let a = StreamingWindowPolicy(
-            maximumWindowDuration: 10, minimumWindowDuration: 2, overlapDuration: 1, sampleRate: 16_000)
+            maximumWindowDuration: 10, minimumWindowDuration: 2, overlapDuration: 1,
+            sampleRate: 16_000)
         let b = StreamingWindowPolicy(
-            maximumWindowDuration: 10, minimumWindowDuration: 2, overlapDuration: 1, sampleRate: 16_000)
+            maximumWindowDuration: 10, minimumWindowDuration: 2, overlapDuration: 1,
+            sampleRate: 16_000)
         #expect(a == b)
         let c = StreamingWindowPolicy(
-            maximumWindowDuration: 10, minimumWindowDuration: 2, overlapDuration: 1.2, sampleRate: 16_000)
+            maximumWindowDuration: 10, minimumWindowDuration: 2, overlapDuration: 1.2,
+            sampleRate: 16_000)
         #expect(a != c)
     }
 }

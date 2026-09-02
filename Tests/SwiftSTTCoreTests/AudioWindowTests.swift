@@ -25,7 +25,7 @@ struct AudioWindowTests {
         #expect(window.duration == 0)
     }
 
-    @Test("W4: false-positive — the input that must not produce W1's answer")
+    @Test("W4: false-positive, the input that must not produce W1's answer")
     func durationDoesNotMatchWrongInput() {
         let window = AudioWindow(
             samples: Array(repeating: 0, count: 16_000), startTime: 0, cut: .stop)

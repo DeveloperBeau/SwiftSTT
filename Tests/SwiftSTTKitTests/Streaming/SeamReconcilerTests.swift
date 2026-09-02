@@ -16,7 +16,9 @@ private func window(
     )
 }
 
-private func segment(_ text: String, _ start: TimeInterval, _ end: TimeInterval) -> TranscriptionSegment {
+private func segment(_ text: String, _ start: TimeInterval, _ end: TimeInterval)
+    -> TranscriptionSegment
+{
     TranscriptionSegment(text: text, start: start, end: end)
 }
 
@@ -137,7 +139,8 @@ struct SeamReconcilerTests {
         // dropping it whole would lose the rest, so it is trimmed.
         let nextWindow = window(startingAt: 13.5, lasting: 5, cut: .silence)
         let emitted = reconciler.reconcile(
-            [segment("charlie delta echo", 0.5, 2.5)], from: nextWindow).segments
+            [segment("charlie delta echo", 0.5, 2.5)], from: nextWindow
+        ).segments
 
         #expect(emitted.count == 1)
         #expect(emitted.first?.text == "delta echo")
@@ -170,12 +173,13 @@ struct SeamReconcilerTests {
         #expect(emitted == [segment("early", 18.5, 18.7)])
     }
 
-    @Test("R7: degenerate — one segment spanning the whole window")
+    @Test("R7: degenerate, one segment spanning the whole window")
     func degenerateSingleSegmentSpansWindow() {
         var reconciler = SeamReconciler(overlapDuration: 1.5)
         let win = window(startingAt: 0, lasting: 15, cut: .maximumDuration)
         let emitted = reconciler.reconcile(
-            [segment("one long sentence", 0.0, 15.0)], from: win).segments
+            [segment("one long sentence", 0.0, 15.0)], from: win
+        ).segments
         #expect(emitted == [segment("one long sentence", 0.0, 15.0)])
 
         let nextWindow = window(startingAt: 13.5, lasting: 5, cut: .stop)
@@ -184,7 +188,7 @@ struct SeamReconcilerTests {
         #expect(nextEmitted == [segment("after", 15.0, 16.5)])
     }
 
-    @Test("R8: failure case — empty decode does not crash on candidates.min()")
+    @Test("R8: failure case, empty decode does not crash on candidates.min()")
     func emptyDecodeDoesNotCrash() {
         var reconciler = SeamReconciler(overlapDuration: 1.5)
         let forcedWindow = window(startingAt: 0, lasting: 15, cut: .maximumDuration)
@@ -192,11 +196,12 @@ struct SeamReconcilerTests {
         #expect(emitted == [])
 
         let nextWindow = window(startingAt: 13.5, lasting: 5, cut: .stop)
-        let nextEmitted = reconciler.reconcile([segment("after", 0.0, 1.0)], from: nextWindow).segments
+        let nextEmitted = reconciler.reconcile([segment("after", 0.0, 1.0)], from: nextWindow)
+            .segments
         #expect(nextEmitted == [segment("after", 13.5, 14.5)])
     }
 
-    @Test("R9: failure case — zero-duration window")
+    @Test("R9: failure case, zero-duration window")
     func zeroDurationWindow() {
         var reconciler = SeamReconciler(overlapDuration: 1.5)
         let zeroWindow = AudioWindow(samples: [], startTime: 4.0, cut: .maximumDuration)
@@ -205,7 +210,8 @@ struct SeamReconcilerTests {
 
         let followingWindow = window(startingAt: 4.0, lasting: 2, cut: .stop)
         let followingEmitted = reconciler.reconcile(
-            [segment("after", 0.0, 0.5)], from: followingWindow).segments
+            [segment("after", 0.0, 0.5)], from: followingWindow
+        ).segments
         #expect(followingEmitted == [segment("after", 4.0, 4.5)])
     }
 
@@ -336,7 +342,8 @@ struct SeamReconcilerTests {
         for index in 0..<segmentCount {
             let rawDuration = TimeInterval.random(in: 0.2...4.0, using: &generator)
             let duration = (rawDuration / 0.05).rounded() * 0.05
-            truth.append(GroundTruthSegment(text: "w\(index)", start: cursor, end: cursor + duration))
+            truth.append(
+                GroundTruthSegment(text: "w\(index)", start: cursor, end: cursor + duration))
             cursor += duration
         }
         let total = cursor
@@ -366,7 +373,8 @@ struct SeamReconcilerTests {
 
             let contained = truth.filter { $0.start >= audioStart && $0.end <= audioEnd }
             let decoded = contained.map {
-                TranscriptionSegment(text: $0.text, start: $0.start - audioStart, end: $0.end - audioStart)
+                TranscriptionSegment(
+                    text: $0.text, start: $0.start - audioStart, end: $0.end - audioStart)
             }
 
             // Every cut but the last carries audio forward, silence cuts
@@ -380,7 +388,8 @@ struct SeamReconcilerTests {
             let cut: WindowCutCause = isLast ? .stop : (forced ? .maximumDuration : .silence)
 
             windows.append(
-                GeneratedWindow(audioStart: audioStart, audioEnd: audioEnd, cut: cut, decoded: decoded))
+                GeneratedWindow(
+                    audioStart: audioStart, audioEnd: audioEnd, cut: cut, decoded: decoded))
 
             if isLast {
                 break
@@ -397,7 +406,7 @@ struct SeamReconcilerTests {
         )
     }
 
-    @Test("R11: fuzz — exact-once tiling across 200 generated cases")
+    @Test("R11: fuzz, exact-once tiling across 200 generated cases")
     func fuzzExactOnceTiling() {
         for iteration in 0..<200 {
             let seed = 0xF00D_BEEF &+ UInt64(iteration)
@@ -408,7 +417,8 @@ struct SeamReconcilerTests {
             for generated in testCase.windows {
                 let win = AudioWindow(
                     samples: Array(
-                        repeating: Float(0), count: Int((generated.audioEnd - generated.audioStart) * 16_000)),
+                        repeating: Float(0),
+                        count: Int((generated.audioEnd - generated.audioStart) * 16_000)),
                     startTime: generated.audioStart,
                     cut: generated.cut
                 )
@@ -457,7 +467,9 @@ struct SeamReconcilerTests {
             let truthByText = Dictionary(uniqueKeysWithValues: testCase.truth.map { ($0.text, $0) })
             for item in emitted {
                 guard let truthSegment = truthByText[item.text] else { continue }
-                if abs(item.start - truthSegment.start) > 1e-6 || abs(item.end - truthSegment.end) > 1e-6 {
+                if abs(item.start - truthSegment.start) > 1e-6
+                    || abs(item.end - truthSegment.end) > 1e-6
+                {
                     Issue.record(
                         "seed \(testCase.seed) time mismatch for \(item.text): got (\(item.start), \(item.end)), expected (\(truthSegment.start), \(truthSegment.end))"
                     )
@@ -466,7 +478,9 @@ struct SeamReconcilerTests {
         }
     }
 
-    @Test("R12: false-positive validation — a pass-through stub must fail R11's no-duplication invariant")
+    @Test(
+        "R12: false-positive validation, a pass-through stub must fail R11's no-duplication invariant"
+    )
     func passThroughFailsNoDuplicationInvariant() {
         var anyDuplicateFound = false
         for iteration in 0..<200 {
@@ -497,6 +511,8 @@ struct SeamReconcilerTests {
             if anyDuplicateFound { break }
         }
 
-        #expect(anyDuplicateFound, "pass-through stub should duplicate at least one segment across 200 cases")
+        #expect(
+            anyDuplicateFound,
+            "pass-through stub should duplicate at least one segment across 200 cases")
     }
 }
