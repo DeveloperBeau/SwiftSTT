@@ -47,7 +47,8 @@ struct AudioWindowCutterTests {
 
     @Test("C1: silence cut")
     func silenceCut() async throws {
-        let policy = StreamingWindowPolicy(maximumWindowDuration: 10, minimumWindowDuration: 0.5, overlapDuration: 1)
+        let policy = StreamingWindowPolicy(
+            maximumWindowDuration: 10, minimumWindowDuration: 0.5, overlapDuration: 1)
         let cutter = makeCutter(policy: policy, verdicts: [true, true, true, true, true, false])
 
         var lastWindow: AudioWindow?
@@ -61,9 +62,10 @@ struct AudioWindowCutterTests {
         #expect(window.startTime == 0)
     }
 
-    @Test("C2: false-positive — the minimum guard suppresses the cut")
+    @Test("C2: false-positive, the minimum guard suppresses the cut")
     func minimumGuardSuppressesCut() async {
-        let policy = StreamingWindowPolicy(maximumWindowDuration: 10, minimumWindowDuration: 2.0, overlapDuration: 1)
+        let policy = StreamingWindowPolicy(
+            maximumWindowDuration: 10, minimumWindowDuration: 2.0, overlapDuration: 1)
         let cutter = makeCutter(policy: policy, verdicts: [true, true, true, true, true, false])
 
         for _ in 0..<6 {
@@ -72,9 +74,10 @@ struct AudioWindowCutterTests {
         }
     }
 
-    @Test("C3: false-negative — the minimum guard eventually allows the cut")
+    @Test("C3: false-negative, the minimum guard eventually allows the cut")
     func minimumGuardEventuallyAllowsCut() async throws {
-        let policy = StreamingWindowPolicy(maximumWindowDuration: 10, minimumWindowDuration: 2.0, overlapDuration: 1)
+        let policy = StreamingWindowPolicy(
+            maximumWindowDuration: 10, minimumWindowDuration: 2.0, overlapDuration: 1)
         var verdicts = Array(repeating: true, count: 25)
         verdicts.append(false)
         let cutter = makeCutter(policy: policy, verdicts: verdicts)
@@ -91,7 +94,8 @@ struct AudioWindowCutterTests {
 
     @Test("C4: forced cut and carry-over")
     func forcedCutAndCarryOver() async throws {
-        let policy = StreamingWindowPolicy(maximumWindowDuration: 1.0, minimumWindowDuration: 0.5, overlapDuration: 0.3)
+        let policy = StreamingWindowPolicy(
+            maximumWindowDuration: 1.0, minimumWindowDuration: 0.5, overlapDuration: 0.3)
         let cutter = makeCutter(policy: policy, verdicts: Array(repeating: true, count: 20))
 
         var firstWindow: AudioWindow?
@@ -122,9 +126,10 @@ struct AudioWindowCutterTests {
         #expect(window2.samples.count == 16_000)
     }
 
-    @Test("C5: false-positive — speechless audio never returns a window")
+    @Test("C5: false-positive, speechless audio never returns a window")
     func speechlessAudioNeverReturnsWindow() async {
-        let policy = StreamingWindowPolicy(maximumWindowDuration: 1.0, minimumWindowDuration: 0.5, overlapDuration: 0.3)
+        let policy = StreamingWindowPolicy(
+            maximumWindowDuration: 1.0, minimumWindowDuration: 0.5, overlapDuration: 0.3)
         let cutter = makeCutter(policy: policy, verdicts: Array(repeating: false, count: 20))
 
         for _ in 0..<20 {
@@ -135,9 +140,10 @@ struct AudioWindowCutterTests {
         #expect(flushed == nil)
     }
 
-    @Test("C6: false-negative — dropped windows still advance windowStartTime")
+    @Test("C6: false-negative, dropped windows still advance windowStartTime")
     func droppedWindowsAdvanceStartTime() async throws {
-        let policy = StreamingWindowPolicy(maximumWindowDuration: 1.0, minimumWindowDuration: 0.5, overlapDuration: 0.3)
+        let policy = StreamingWindowPolicy(
+            maximumWindowDuration: 1.0, minimumWindowDuration: 0.5, overlapDuration: 0.3)
         var verdicts = Array(repeating: false, count: 20)
         verdicts.append(contentsOf: Array(repeating: true, count: 10))
         let cutter = makeCutter(policy: policy, verdicts: verdicts)
@@ -154,7 +160,8 @@ struct AudioWindowCutterTests {
 
     @Test("C7: flush ignores the minimum")
     func flushIgnoresMinimum() async throws {
-        let policy = StreamingWindowPolicy(maximumWindowDuration: 10, minimumWindowDuration: 5.0, overlapDuration: 1)
+        let policy = StreamingWindowPolicy(
+            maximumWindowDuration: 10, minimumWindowDuration: 5.0, overlapDuration: 1)
         let cutter = makeCutter(policy: policy, verdicts: [true, true, true])
 
         for _ in 0..<3 {
@@ -167,7 +174,7 @@ struct AudioWindowCutterTests {
         #expect(flushed.samples.count == 4_800)
     }
 
-    @Test("C8: failure case — flush with nothing buffered")
+    @Test("C8: failure case, flush with nothing buffered")
     func flushWithNothingBuffered() async {
         let policy = StreamingWindowPolicy.default
         let cutter = makeCutter(policy: policy, verdicts: [])
@@ -175,7 +182,7 @@ struct AudioWindowCutterTests {
         #expect(flushed == nil)
     }
 
-    @Test("C9: failure case — flush with only silence buffered")
+    @Test("C9: failure case, flush with only silence buffered")
     func flushWithOnlySilenceBuffered() async {
         let policy = StreamingWindowPolicy.default
         let cutter = makeCutter(policy: policy, verdicts: Array(repeating: false, count: 5))
@@ -187,9 +194,10 @@ struct AudioWindowCutterTests {
         #expect(flushed == nil)
     }
 
-    @Test("C11: ordering — silence beats duration when both fire on the same buffer")
+    @Test("C11: ordering, silence beats duration when both fire on the same buffer")
     func silenceBeatsDurationOnTheSameBuffer() async throws {
-        let policy = StreamingWindowPolicy(maximumWindowDuration: 0.5, minimumWindowDuration: 0.2, overlapDuration: 0.2)
+        let policy = StreamingWindowPolicy(
+            maximumWindowDuration: 0.5, minimumWindowDuration: 0.2, overlapDuration: 0.2)
         let cutter = makeCutter(policy: policy, verdicts: [true, true, true, true, false, true])
 
         var lastWindow: AudioWindow?
@@ -210,9 +218,10 @@ struct AudioWindowCutterTests {
         #expect(flushed.startTime == 0.3)
     }
 
-    @Test("C12: failure case — empty buffer")
+    @Test("C12: failure case, empty buffer")
     func emptyBufferIsIgnored() async throws {
-        let policy = StreamingWindowPolicy(maximumWindowDuration: 10, minimumWindowDuration: 0.5, overlapDuration: 1)
+        let policy = StreamingWindowPolicy(
+            maximumWindowDuration: 10, minimumWindowDuration: 0.5, overlapDuration: 1)
         let cutter = makeCutter(policy: policy, verdicts: [true, true, true, true, true, false])
 
         let emptyResult = await cutter.ingest([])
@@ -226,9 +235,10 @@ struct AudioWindowCutterTests {
         #expect(window.startTime == 0)
     }
 
-    @Test("C13: failure case — a buffer longer than the whole window")
+    @Test("C13: failure case, a buffer longer than the whole window")
     func bufferLongerThanWholeWindow() async throws {
-        let policy = StreamingWindowPolicy(maximumWindowDuration: 1.0, minimumWindowDuration: 0.5, overlapDuration: 0.25)
+        let policy = StreamingWindowPolicy(
+            maximumWindowDuration: 1.0, minimumWindowDuration: 0.5, overlapDuration: 0.25)
         let cutter = makeCutter(policy: policy, verdicts: [true])
 
         let bigBuffer = Array(repeating: Float(0.5), count: 48_000)
@@ -240,7 +250,7 @@ struct AudioWindowCutterTests {
         #expect(flushed.startTime == 2.75)
     }
 
-    @Test("C14: fuzz A — exact tiling, speech throughout")
+    @Test("C14: fuzz A, exact tiling, speech throughout")
     func fuzzExactTilingSpeechThroughout() async {
         var generator = SeededGenerator(seed: 0xF00D_BEEF)
         for iteration in 0..<200 {
@@ -253,7 +263,8 @@ struct AudioWindowCutterTests {
                 minimumWindowDuration: minimumWindowDuration,
                 overlapDuration: overlapDuration
             )
-            let cutter = makeCutter(policy: policy, verdicts: Array(repeating: true, count: bufferCount))
+            let cutter = makeCutter(
+                policy: policy, verdicts: Array(repeating: true, count: bufferCount))
 
             var expectedStart: TimeInterval = 0
             var totalIngested: TimeInterval = 0
@@ -266,7 +277,8 @@ struct AudioWindowCutterTests {
                         )
                     }
                     expectedStart +=
-                        window.duration - (window.cut == .maximumDuration ? policy.overlapDuration : 0)
+                        window.duration
+                        - (window.cut == .maximumDuration ? policy.overlapDuration : 0)
                 }
             }
             if let flushedWindow = await cutter.flush() {
@@ -354,7 +366,7 @@ struct AudioWindowCutterTests {
         #expect(abs(flushed.startTime - 0.2) < 1e-9)
     }
 
-    @Test("C15: fuzz B — random verdicts, bounds only")
+    @Test("C15: fuzz B, random verdicts, bounds only")
     func fuzzRandomVerdictsBoundsOnly() async {
         var generator = SeededGenerator(seed: 0xF00D_BEEF)
         for iteration in 0..<200 {
@@ -418,14 +430,16 @@ struct AudioWindowCutterTests {
         }
     }
 
-    @Test("C16: a policy built from a negative maximumWindowDuration still forces a valid cut on the first speech buffer, not a crash")
+    @Test(
+        "C16: a policy built from a negative maximumWindowDuration still forces a valid cut on the first speech buffer, not a crash"
+    )
     func negativeMaximumDurationForcesAValidCutNotACrash() async throws {
         // StreamingWindowPolicy floors a non-positive maximumWindowDuration
         // rather than passing it through (see StreamingWindowPolicyTests.P8).
         // Confirming that here, through the cutter, is the regression that
         // matters: unfloored, `overlapDuration` clamps to a negative half of
         // a negative maximum, `carryCount` goes negative, and
-        // `pending.suffix(carryCount)` traps — reachable from the very first
+        // `pending.suffix(carryCount)` traps, reachable from the very first
         // speech buffer, since the floored maximum (0.1s) equals one buffer.
         let policy = StreamingWindowPolicy(maximumWindowDuration: -1)
         let cutter = makeCutter(policy: policy, verdicts: [true])

@@ -1,6 +1,7 @@
 import Foundation
 import SwiftSTTCore
 import Testing
+
 @testable import SwiftSTTKit
 
 @Suite("WhisperCppEngine lifecycle")

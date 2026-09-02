@@ -37,7 +37,7 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
     /// into a single reference-typed object, rather than a handful of flat
     /// actor properties, is what makes that safe. `stop()` snapshots its own
     /// `Session` into a local *before* its first suspension point and then
-    /// only ever touches that local for the rest of the method — a
+    /// only ever touches that local for the rest of the method. A
     /// reentrant `start()` installs a brand new `Session` in
     /// `currentSession`, and the two never share storage, so neither call
     /// can clobber the other's continuations, tasks, cutter or reconciler.
@@ -97,7 +97,9 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
 
     /// Test seat: supplies the decode step and the cutter directly, so the
     /// streaming path can be exercised without loading a model and without a
-    /// real voice activity detector. Not public.
+    /// real voice activity detector.
+    ///
+    /// Not public.
     init(
         storage: WhisperModelStorage,
         audioFactory: @escaping AudioCaptureFactory,
@@ -227,7 +229,9 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
         emitUpdate(TranscriptUpdate(segments: [segment]))
     }
 
-    /// Sends `update` to both streams. Subscribers to ``segmentStream()`` see
+    /// Sends `update` to both streams.
+    ///
+    /// Subscribers to ``segmentStream()`` see
     /// only what it appends, having no way to be told about a retraction.
     private func emitUpdate(_ update: TranscriptUpdate) {
         for (_, cont) in updateContinuations {
@@ -284,7 +288,9 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
     }
 
     /// Releases the loaded model, giving back the memory and the GPU
-    /// resources it holds. Stops recording first if a session is running.
+    /// resources it holds.
+    ///
+    /// Stops recording first if a session is running.
     ///
     /// Call this before a process that has loaded a model exits.
     /// whisper.cpp's Metal backend tears its devices down during `exit()`
@@ -383,7 +389,7 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
 
         // Only finalize engine-wide state (segment streams, `.ready`) if no
         // reentrant start() installed a new session while this stop() was
-        // suspended above — otherwise that session is still recording, and
+        // suspended above. Otherwise that session is still recording, and
         // finishing its subscribers' streams or reporting `.ready` over it
         // would be exactly the clobbering this method must not do.
         if currentSession == nil {
@@ -403,7 +409,7 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
         // No `currentSession` guard here: `session` is always the one
         // `captureTask` was created for, its storage is never shared with
         // any other session, and `stop()` clears `currentSession` before
-        // draining `captureTask` (so a reentrant `start()` can begin) —
+        // draining `captureTask` (so a reentrant `start()` can begin), so
         // guarding on identity here would reject this session's own
         // still-draining backlog. A provider that keeps calling `onChunk`
         // after `stop()` is already handled: `sampleContinuation.finish()`

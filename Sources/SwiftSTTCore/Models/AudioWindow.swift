@@ -32,7 +32,9 @@ public struct AudioWindow: Sendable, Equatable {
     public let cut: WindowCutCause
 
     /// Creates a new AudioWindow with the supplied values.
-    public init(samples: [Float], startTime: TimeInterval, sampleRate: Int = 16_000, cut: WindowCutCause) {
+    public init(
+        samples: [Float], startTime: TimeInterval, sampleRate: Int = 16_000, cut: WindowCutCause
+    ) {
         self.samples = samples
         self.startTime = startTime
         self.sampleRate = sampleRate

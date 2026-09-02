@@ -7,11 +7,15 @@ import Foundation
 public struct StreamingWindowPolicy: Sendable, Equatable {
 
     /// Longest run of speech, in seconds, before a window is cut without a
-    /// silence boundary. The fallback, not the primary cut.
+    /// silence boundary.
+    ///
+    /// The fallback, not the primary cut.
     public let maximumWindowDuration: TimeInterval
 
     /// Shortest run of *new* speech, in seconds, a silence boundary is allowed
-    /// to cut. A boundary arriving before this is ignored and audio keeps
+    /// to cut.
+    ///
+    /// A boundary arriving before this is ignored and audio keeps
     /// accumulating.
     ///
     /// Audio carried over from the previous window does not count toward it,
@@ -28,9 +32,11 @@ public struct StreamingWindowPolicy: Sendable, Equatable {
     public let sampleRate: Int
 
     /// Below this, a window would force-cut on every incoming buffer rather
-    /// than ever accumulating audio, which defeats the point of a maximum —
+    /// than ever accumulating audio, which defeats the point of a maximum,
     /// so a non-positive `maximumWindowDuration` is floored here rather than
-    /// passed through. Matches the capture buffer duration
+    /// passed through.
+    ///
+    /// Matches the capture buffer duration
     /// `WhisperCppEngine` requests, itself the smallest unit of audio a
     /// window can usefully be made of.
     private static let minimumMaximumWindowDuration: TimeInterval = 0.1

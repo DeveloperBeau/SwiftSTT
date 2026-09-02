@@ -2,6 +2,7 @@ import Foundation
 import SwiftSTTCore
 import Testing
 @preconcurrency import whisper
+
 @testable import SwiftSTTKit
 
 @Suite("WhisperCppParams")

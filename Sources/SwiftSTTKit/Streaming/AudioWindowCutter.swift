@@ -40,13 +40,14 @@ public actor AudioWindowCutter {
     /// closed one.
     ///
     /// Returns `nil` when the window is still filling, and also when a closed
-    /// window contained no speech at all — speechless audio is dropped rather
+    /// window contained no speech at all. Speechless audio is dropped rather
     /// than sent to the model, which hallucinates on silence.
     public func ingest(_ samples: [Float]) async -> AudioWindow? {
         guard !samples.isEmpty else { return nil }
         pending.append(contentsOf: samples)
         let isSpeech = await detector.isSpeech(
-            chunk: AudioChunk(samples: samples, sampleRate: policy.sampleRate, timestamp: elapsedTime))
+            chunk: AudioChunk(
+                samples: samples, sampleRate: policy.sampleRate, timestamp: elapsedTime))
         if isSpeech { pendingContainsSpeech = true }
         let boundary = await refiner.ingest(isSpeech: isSpeech, sampleCount: samples.count)
         elapsedTime += Double(samples.count) / Double(policy.sampleRate)
@@ -91,7 +92,7 @@ public actor AudioWindowCutter {
         if cause != .stop, pendingContainsSpeech {
             // StreamingWindowPolicy floors maximumWindowDuration and clamps
             // overlapDuration from it, so this should never go negative in
-            // practice — guarded anyway, because `suffix(_:)` traps on a
+            // practice. It is guarded anyway, because `suffix(_:)` traps on a
             // negative length and this is the line that would take the
             // trap, not the policy that produced it.
             //
