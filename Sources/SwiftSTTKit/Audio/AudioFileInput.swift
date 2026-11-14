@@ -143,14 +143,13 @@ public actor AudioFileInput: AudioInputProvider {
             else { return }
 
             var conversionError: NSError?
-            let consumed = Atomic<Bool>(false)
+            let consumed = OneShotFlag()
             let status = converter.convert(to: outputBuffer, error: &conversionError) {
                 _, outStatus in
-                if consumed.load(ordering: .relaxed) {
+                if !consumed.claim() {
                     outStatus.pointee = .noDataNow
                     return nil
                 }
-                consumed.store(true, ordering: .relaxed)
                 outStatus.pointee = .haveData
                 return inputBuffer
             }
@@ -226,5 +225,18 @@ private final class CompletionBox: @unchecked Sendable {
                 continuation.resume()
             }
         }
+    }
+}
+
+/// A flag that reports `true` on the first call to ``claim()`` only.
+///
+/// `AVAudioConverter` input blocks must hand over their buffer once. The flag
+/// is a class because Xcode 27 rejects a captured noncopyable `Atomic` in that
+/// block with "copy of noncopyable typed value".
+final class OneShotFlag: Sendable {
+    private let taken = Atomic<Bool>(false)
+
+    func claim() -> Bool {
+        !taken.exchange(true, ordering: .relaxed)
     }
 }

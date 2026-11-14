@@ -1,7 +1,6 @@
 @preconcurrency import AVFoundation
 import Foundation
 import SwiftSTTCore
-import Synchronization
 
 /// Production ``AudioInputProvider`` backed by `AVAudioEngine`.
 ///
@@ -189,13 +188,12 @@ private final class CaptureBox: @unchecked Sendable {
         }
 
         var error: NSError?
-        let consumed = Atomic<Bool>(false)
+        let consumed = OneShotFlag()
         let status = converter.convert(to: outBuffer, error: &error) { _, outStatus in
-            if consumed.load(ordering: .relaxed) {
+            if !consumed.claim() {
                 outStatus.pointee = .noDataNow
                 return nil
             }
-            consumed.store(true, ordering: .relaxed)
             outStatus.pointee = .haveData
             return buffer
         }
