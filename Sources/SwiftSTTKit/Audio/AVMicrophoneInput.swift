@@ -167,7 +167,7 @@ public actor AVMicrophoneInput: AudioInputProvider {
 /// Wraps non-`Sendable` AVFoundation refs.
 ///
 /// Mutable fields are written once on the actor before the tap installs, then read-only from the audio thread.
-private final class CaptureBox: @unchecked Sendable {
+final class CaptureBox: @unchecked Sendable {
     let engine = AVAudioEngine()
     var converter: AVAudioConverter?
     var outputFormat: AVAudioFormat?
@@ -190,12 +190,7 @@ private final class CaptureBox: @unchecked Sendable {
         var error: NSError?
         let consumed = OneShotFlag()
         let status = converter.convert(to: outBuffer, error: &error) { _, outStatus in
-            if !consumed.claim() {
-                outStatus.pointee = .noDataNow
-                return nil
-            }
-            outStatus.pointee = .haveData
-            return buffer
+            consumed.provide(buffer, status: outStatus)
         }
 
         guard error == nil, status != .error, let data = outBuffer.floatChannelData?[0] else {
