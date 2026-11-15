@@ -146,12 +146,7 @@ public actor AudioFileInput: AudioInputProvider {
             let consumed = OneShotFlag()
             let status = converter.convert(to: outputBuffer, error: &conversionError) {
                 _, outStatus in
-                if !consumed.claim() {
-                    outStatus.pointee = .noDataNow
-                    return nil
-                }
-                outStatus.pointee = .haveData
-                return inputBuffer
+                consumed.provide(inputBuffer, status: outStatus)
             }
 
             if status == .error || conversionError != nil {
@@ -238,5 +233,18 @@ final class OneShotFlag: Sendable {
 
     func claim() -> Bool {
         !taken.exchange(true, ordering: .relaxed)
+    }
+
+    /// Converter input block body: hands over `buffer` on the first call, then reports no data.
+    func provide(
+        _ buffer: AVAudioPCMBuffer,
+        status: UnsafeMutablePointer<AVAudioConverterInputStatus>
+    ) -> AVAudioBuffer? {
+        guard claim() else {
+            status.pointee = .noDataNow
+            return nil
+        }
+        status.pointee = .haveData
+        return buffer
     }
 }
