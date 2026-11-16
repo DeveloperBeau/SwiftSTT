@@ -125,7 +125,7 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
             Task { [weak self] in
                 await self?.registerStatusContinuation(id: id, continuation: continuation)
             }
-            continuation.onTermination = { _ in
+            continuation.onTermination = { [weak self] _ in
                 Task { [weak self] in
                     await self?.removeStatusContinuation(id: id)
                 }
@@ -150,7 +150,7 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
             Task { [weak self] in
                 await self?.registerSegmentContinuation(id: id, continuation: continuation)
             }
-            continuation.onTermination = { _ in
+            continuation.onTermination = { [weak self] _ in
                 Task { [weak self] in
                     await self?.removeSegmentContinuation(id: id)
                 }
@@ -176,7 +176,7 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
             Task { [weak self] in
                 await self?.registerUpdateContinuation(id: id, continuation: continuation)
             }
-            continuation.onTermination = { _ in
+            continuation.onTermination = { [weak self] _ in
                 Task { [weak self] in
                     await self?.removeUpdateContinuation(id: id)
                 }
