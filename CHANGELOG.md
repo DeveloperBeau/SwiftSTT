@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Actions workflows: `ci.yml`, `lint.yml`, `integration.yml`.
 
 ### Changed
+- whisper.cpp is now v1.9.5. `scripts/bootstrap-whisper.sh` builds the xcframework
+  locally. Packages that resolve SwiftSTT by URL get the zip attached to the SwiftSTT release.
 - README expanded with badges, architecture diagram, and quick-start example.
 - Documentation hygiene pass: every public type now has a doc comment.
 
