@@ -27,7 +27,7 @@ Requirements:
 
 - macOS 15+
 - Xcode 16.4+
-- Swift 6.3 toolchain
+- Swift 6.4 toolchain
 
 Clone and build:
 
