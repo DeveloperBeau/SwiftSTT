@@ -50,6 +50,48 @@ private actor SlowStopMockAudioInput: AudioInputProvider {
     }
 }
 
+/// An `AudioInputProvider` whose `stop()` holds until the test opens it.
+/// The test can wait for `stop()` to be entered, so it controls the order of
+/// two overlapped `stop()` calls without sleeps.
+private actor GatedStopMockAudioInput: AudioInputProvider {
+    private var entered = false
+    private var open = false
+    private var enteredWaiters: [CheckedContinuation<Void, Never>] = []
+    private var gateWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func start(
+        targetSampleRate: Double,
+        bufferDurationSeconds: Double,
+        onChunk: @Sendable @escaping ([Float]) -> Void
+    ) async throws(SwiftSTTError) {}
+
+    func stop() async {
+        entered = true
+        for waiter in enteredWaiters { waiter.resume() }
+        enteredWaiters.removeAll()
+        if open { return }
+        await withCheckedContinuation { gateWaiters.append($0) }
+    }
+
+    func waitUntilStopEntered() async {
+        if entered { return }
+        await withCheckedContinuation { enteredWaiters.append($0) }
+    }
+
+    func openGate() {
+        open = true
+        for waiter in gateWaiters { waiter.resume() }
+        gateWaiters.removeAll()
+    }
+}
+
+/// Holds a task the test creates after the closure that awaits it.
+private actor TaskBox {
+    private var task: Task<Void, Never>?
+    func set(_ task: Task<Void, Never>) { self.task = task }
+    func wait() async { await task?.value }
+}
+
 /// Vends one provider per call, in order. `AudioCaptureFactory` is a plain
 /// synchronous `@Sendable` closure, not actor-isolated, so this uses a lock
 /// rather than an actor.
@@ -627,14 +669,16 @@ struct StreamingEngineTests {
     }
 
     @Test(
-        "E12: a reentrant start() during an in-flight stop() does not clobber session 2 (whileRecording)"
+        "E12: a reentrant start() during an in-flight stop() does not clobber session 2 (whileRecording)",
+        .timeLimit(.minutes(1))
     )
     func reentrantStartDuringInFlightStopWhileRecording() async throws {
-        let slowProvider = SlowStopMockAudioInput([], stopDelayNanoseconds: 300_000_000)
+        let gatedProvider = GatedStopMockAudioInput()
         let session2Buffer = Array(repeating: Float(0.5), count: 1_600)
         let fastProvider = MockAudioInput([session2Buffer, session2Buffer, session2Buffer])
-        let providers = SequentialProviders([slowProvider, fastProvider])
+        let providers = SequentialProviders([gatedProvider, fastProvider])
         let decoder = ScriptedWindowDecoder([.segments([segment("session2", 0, 0.3)])])
+        let session1StopBox = TaskBox()
         let policy = StreamingWindowPolicy(
             maximumWindowDuration: 10, minimumWindowDuration: 0.2, overlapDuration: 1)
 
@@ -642,7 +686,12 @@ struct StreamingEngineTests {
             storage: WhisperModelStorage(defaults: UserDefaults(suiteName: UUID().uuidString)!),
             audioFactory: { providers.next() },
             timing: .whileRecording(policy),
-            transcribeWindow: { samples in try await decoder.decode(samples) },
+            transcribeWindow: { samples in
+                // Session 2's decode is in flight: let session 1's stop() finish now.
+                await gatedProvider.openGate()
+                await session1StopBox.wait()
+                return try await decoder.decode(samples)
+            },
             makeCutter: { policy in
                 AudioWindowCutter(
                     policy: policy,
@@ -663,15 +712,17 @@ struct StreamingEngineTests {
             await tracker.markFinished()
         }
 
-        try await engine.start()  // session 1: slow-to-stop provider, delivers nothing
-        let session1Stop = Task { await engine.stop() }  // begins session 1's slow teardown
-        try await Task.sleep(nanoseconds: 50_000_000)  // let it reach its first suspension
+        try await engine.start()  // session 1: gated provider, delivers nothing
+        let session1Stop = Task { await engine.stop() }
+        await session1StopBox.set(session1Stop)
+        await gatedProvider.waitUntilStopEntered()  // session 1's stop() is suspended
 
         try await engine.start()  // session 2: reentrant, while session 1's stop() is in flight
-        try await Task.sleep(nanoseconds: 400_000_000)  // session 1's slow stop has resumed by now
         #expect(await tracker.finished == false)  // session 2 is still recording
 
-        await engine.stop()  // session 2's own stop: flushes and decodes its window
+        // Session 2's stop flushes its window. Its decode releases session 1's
+        // stop and waits for it to return before it emits "session2".
+        await engine.stop()
         await session1Stop.value  // session 1's stop must also complete, not hang
         await consumer.value  // the stream must finish now, not leak forever
 
