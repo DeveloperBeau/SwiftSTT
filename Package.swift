@@ -1,4 +1,5 @@
 // swift-tools-version: 6.4
+import Foundation
 import PackageDescription
 
 let upcoming: [SwiftSetting] = [
@@ -8,10 +9,21 @@ let upcoming: [SwiftSetting] = [
     .enableUpcomingFeature("MemberImportVisibility"),  // SE-0444
 ]
 
-let whisperCppVersion = "v1.8.4"
-let whisperCppXCFrameworkURL =
-    "https://github.com/ggml-org/whisper.cpp/releases/download/\(whisperCppVersion)/"
-    + "whisper-\(whisperCppVersion)-xcframework.zip"
+// scripts/bootstrap-whisper.sh reads this version. Upstream publishes no xcframework for it.
+let whisperCppVersion = "v1.9.5"
+let whisperCppLocalPath = ".whisper/\(whisperCppVersion)/whisper.xcframework"
+
+// A checkout with a local build uses it. A consumer that resolves SwiftSTT by URL never runs
+// the script, so it falls back to the zip attached to the SwiftSTT release.
+let whisperCppTarget: Target =
+    FileManager.default.fileExists(atPath: Context.packageDirectory + "/" + whisperCppLocalPath)
+    ? .binaryTarget(name: "WhisperCpp", path: whisperCppLocalPath)
+    : .binaryTarget(
+        name: "WhisperCpp",
+        url: "https://github.com/DeveloperBeau/SwiftSTT/releases/download/"
+            + "whisper-\(whisperCppVersion)/whisper-\(whisperCppVersion)-xcframework.zip",
+        checksum: "9551230c0456d11904edac6d9e1b7b6b863b8e1b361d847b23d3f12968d4fd71"
+    )
 
 let package = Package(
     name: "SwiftSTT",
@@ -30,11 +42,7 @@ let package = Package(
         .package(url: "https://github.com/weichsel/ZIPFoundation", from: "0.9.0"),
     ],
     targets: [
-        .binaryTarget(
-            name: "WhisperCpp",
-            url: whisperCppXCFrameworkURL,
-            checksum: "1c7a93bd20fe4e57e0af12051ddb34b7a434dfc9acc02c8313393150b6d1821f"
-        ),
+        whisperCppTarget,
         .target(
             name: "SwiftSTTCore",
             swiftSettings: upcoming

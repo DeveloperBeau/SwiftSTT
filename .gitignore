@@ -70,3 +70,6 @@ ideas/
 
 # /ship per-checkout config
 .ship-lanes.conf
+
+# Locally built whisper.cpp xcframework (scripts/bootstrap-whisper.sh)
+.whisper/

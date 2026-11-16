@@ -40,6 +40,8 @@ Then add `SwiftSTTKit` to your target:
 
 `SwiftSTTCore` (the protocol layer with no Apple framework dependencies) is pulled in as a transitive dependency.
 
+A package that depends on SwiftSTT by URL needs no extra step. SwiftPM downloads the whisper.cpp xcframework from the SwiftSTT GitHub release. A package that depends on a local checkout of SwiftSTT must run `scripts/bootstrap-whisper.sh` in that checkout first, or it also downloads the release zip.
+
 In Xcode: **File > Add Package Dependencies** and paste the repo URL.
 
 ## Quick start (CLI)
@@ -151,7 +153,7 @@ Components:
 
 Three SPM library/executable targets, plus a binary target:
 
-- `WhisperCpp`: the whisper.cpp v1.8.4 xcframework (binary target).
+- `WhisperCpp`: the whisper.cpp v1.9.5 xcframework (binary target). A checkout that ran `scripts/bootstrap-whisper.sh` uses the local build in `.whisper/`. Other checkouts download the zip attached to the SwiftSTT release.
 - `SwiftSTTCore`: protocols, value types, and model metadata. Zero Apple framework deps.
 - `SwiftSTTKit`: the engine, audio capture, and downloader. Depends on `WhisperCpp` and ZIPFoundation.
 - `SwiftSTTCLI`: the `swiftstt` executable, built on `SwiftSTTKit` and ArgumentParser.
