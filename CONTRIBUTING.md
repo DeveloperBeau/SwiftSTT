@@ -27,7 +27,7 @@ Requirements:
 
 - macOS 15+
 - Xcode 16.4+
-- Swift 6.3 toolchain
+- Swift 6.4 toolchain
 - CMake (`brew install cmake`), to build whisper.cpp
 
 Clone and build. The bootstrap script builds `whisper.xcframework` into the ignored `.whisper/` folder once. When the framework for the pinned version is present, the script does nothing. SwiftPM caches the manifest result. If you add or remove `.whisper/` after a build, run `swift package purge-cache`. Run `scripts/test-bootstrap-whisper.sh` after you change the script.

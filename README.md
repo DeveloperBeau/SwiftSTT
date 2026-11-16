@@ -4,7 +4,7 @@ On-device speech-to-text for Apple platforms, built on whisper.cpp.
 
 [![CI](https://github.com/DeveloperBeau/SwiftSTT/actions/workflows/ci.yml/badge.svg)](https://github.com/DeveloperBeau/SwiftSTT/actions/workflows/ci.yml)
 [![Lint](https://github.com/DeveloperBeau/SwiftSTT/actions/workflows/lint.yml/badge.svg)](https://github.com/DeveloperBeau/SwiftSTT/actions/workflows/lint.yml)
-[![Swift](https://img.shields.io/badge/swift-6.3-orange.svg)](https://www.swift.org/)
+[![Swift](https://img.shields.io/badge/swift-6.4-orange.svg)](https://www.swift.org/)
 [![Platforms](https://img.shields.io/badge/platforms-iOS%2018%20%7C%20macOS%2015-blue.svg)](#requirements)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -14,7 +14,7 @@ SwiftSTT transcribes audio to text on-device using OpenAI's Whisper models, runn
 
 ## Requirements
 
-- Swift 6.3 toolchain
+- Swift 6.4 toolchain
 - iOS 18+ or macOS 15+
 
 The iOS Simulator is supported, but whisper.cpp runs on its CPU backend there: the Metal backend crashes inside the Simulator's Metal driver, so the package forces `use_gpu = false` on the Simulator. Transcription works, just slower. Real iOS devices and macOS use the Metal GPU backend.

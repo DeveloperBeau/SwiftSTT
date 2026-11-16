@@ -82,6 +82,8 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
     private var transcribeWindow: WindowTranscribing?
 
     private var currentSession: Session?
+    /// The number of `stop()` calls that have not returned yet.
+    private var stopsInFlight = 0
 
     /// Creates a new engine with the given storage, audio input factory, and timing mode.
     public init(
@@ -125,7 +127,7 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
             Task { [weak self] in
                 await self?.registerStatusContinuation(id: id, continuation: continuation)
             }
-            continuation.onTermination = { _ in
+            continuation.onTermination = { [weak self] _ in
                 Task { [weak self] in
                     await self?.removeStatusContinuation(id: id)
                 }
@@ -150,7 +152,7 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
             Task { [weak self] in
                 await self?.registerSegmentContinuation(id: id, continuation: continuation)
             }
-            continuation.onTermination = { _ in
+            continuation.onTermination = { [weak self] _ in
                 Task { [weak self] in
                     await self?.removeSegmentContinuation(id: id)
                 }
@@ -176,7 +178,7 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
             Task { [weak self] in
                 await self?.registerUpdateContinuation(id: id, continuation: continuation)
             }
-            continuation.onTermination = { _ in
+            continuation.onTermination = { [weak self] _ in
                 Task { [weak self] in
                     await self?.removeUpdateContinuation(id: id)
                 }
@@ -355,6 +357,7 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
     public func stop() async {
         guard let session = currentSession else { return }  // truly idempotent: no-op
         currentSession = nil
+        stopsInFlight += 1
         await session.input.stop()
 
         session.sampleContinuation?.finish()
@@ -391,8 +394,11 @@ public actor WhisperCppEngine: WhisperTranscriptionEngine {
         // reentrant start() installed a new session while this stop() was
         // suspended above. Otherwise that session is still recording, and
         // finishing its subscribers' streams or reporting `.ready` over it
-        // would be exactly the clobbering this method must not do.
-        if currentSession == nil {
+        // would be exactly the clobbering this method must not do. Also wait
+        // for every other in-flight stop(): an older stop() that returns
+        // first must not finish the streams before a newer one emits.
+        stopsInFlight -= 1
+        if currentSession == nil && stopsInFlight == 0 {
             for (_, cont) in updateContinuations {
                 cont.finish()
             }
