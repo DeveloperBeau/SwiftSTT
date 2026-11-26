@@ -47,6 +47,12 @@ if [[ -e "$repo/.whisper/v1.9.5/whisper.xcframework" ]]; then
     failures=$((failures + 1))
 fi
 
+# A stub cmake lets the script pass its cmake check on any machine.
+stubs="$scratch/stubs"
+mkdir -p "$stubs"
+printf '#!/bin/sh\nexit 0\n' > "$stubs/cmake"
+chmod +x "$stubs/cmake"
+
 # A matching sha256 gets past verification. The fake tarball then fails to unpack.
 repo="$(make_repo override v1.9.5)"
 sha="$(shasum -a 256 "$scratch/fake.tar.gz" | cut -d' ' -f1)"
@@ -57,6 +63,19 @@ if [[ $status != 0 && "$output" != *"sha256 mismatch"* ]]; then
     echo "pass: matching sha256 passes verification"
 else
     echo "FAIL: matching sha256 passes verification (status $status, output: $output)"
+    failures=$((failures + 1))
+fi
+
+# A failed download stops the script with the download error and leaves no framework behind.
+repo="$(make_repo nodownload v1.9.5)"
+output="$(PATH="$stubs:/usr/bin:/bin" WHISPER_TARBALL_URL="file:///nonexistent" \
+    "$repo/scripts/bootstrap-whisper.sh" 2>&1)"
+status=$?
+if [[ $status != 0 && "$output" == *"curl:"* && "$output" != *"shasum"* && "$output" != *"sha256 mismatch"* \
+    && ! -e "$repo/.whisper/v1.9.5/whisper.xcframework" ]]; then
+    echo "pass: failed download is reported and leaves no framework"
+else
+    echo "FAIL: failed download is reported and leaves no framework (status $status, output: $output)"
     failures=$((failures + 1))
 fi
 
