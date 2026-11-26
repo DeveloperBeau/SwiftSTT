@@ -22,7 +22,7 @@ let whisperCppTarget: Target =
         name: "WhisperCpp",
         url: "https://github.com/DeveloperBeau/SwiftSTT/releases/download/"
             + "whisper-\(whisperCppVersion)/whisper-\(whisperCppVersion)-xcframework.zip",
-        checksum: "9551230c0456d11904edac6d9e1b7b6b863b8e1b361d847b23d3f12968d4fd71"
+        checksum: "08827b6ffcd8f7f6c26a77ef3595be66402d523a89fc9f26287ab8e280f86d1d"
     )
 
 let package = Package(
