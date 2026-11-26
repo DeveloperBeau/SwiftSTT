@@ -56,10 +56,10 @@ chmod +x "$stubs/cmake"
 # A matching sha256 gets past verification. The fake tarball then fails to unpack.
 repo="$(make_repo override v1.9.5)"
 sha="$(shasum -a 256 "$scratch/fake.tar.gz" | cut -d' ' -f1)"
-output="$(WHISPER_TARBALL_URL="file://$scratch/fake.tar.gz" WHISPER_TARBALL_SHA="$sha" \
+output="$(PATH="$stubs:/usr/bin:/bin" WHISPER_TARBALL_URL="file://$scratch/fake.tar.gz" WHISPER_TARBALL_SHA="$sha" \
     "$repo/scripts/bootstrap-whisper.sh" 2>&1)"
 status=$?
-if [[ $status != 0 && "$output" != *"sha256 mismatch"* ]]; then
+if [[ $status != 0 && "$output" != *"sha256 mismatch"* && "$output" != *"cmake is required"* && "$output" == *"tar:"* ]]; then
     echo "pass: matching sha256 passes verification"
 else
     echo "FAIL: matching sha256 passes verification (status $status, output: $output)"
