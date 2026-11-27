@@ -27,8 +27,8 @@ check() {
 }
 
 # A present framework for the pinned version means no download and no build.
-repo="$(make_repo present v1.9.5)"
-mkdir -p "$repo/.whisper/v1.9.5/whisper.xcframework"
+repo="$(make_repo present v1.9.6)"
+mkdir -p "$repo/.whisper/v1.9.6/whisper.xcframework"
 output="$(WHISPER_TARBALL_URL="file:///nonexistent" "$repo/scripts/bootstrap-whisper.sh" 2>&1)"
 check "present framework is a no-op" 0 "nothing to build" $? "$output"
 
@@ -38,11 +38,11 @@ output="$(WHISPER_TARBALL_URL="file:///nonexistent" "$repo/scripts/bootstrap-whi
 check "unpinned version is rejected" 1 "no pinned tarball sha256 for v0.0.1" $? "$output"
 
 # A tarball with the wrong sha256 is rejected and leaves no framework behind.
-repo="$(make_repo tampered v1.9.5)"
+repo="$(make_repo tampered v1.9.6)"
 echo "not the real source" > "$scratch/fake.tar.gz"
 output="$(WHISPER_TARBALL_URL="file://$scratch/fake.tar.gz" "$repo/scripts/bootstrap-whisper.sh" 2>&1)"
 check "sha256 mismatch is rejected" 1 "sha256 mismatch" $? "$output"
-if [[ -e "$repo/.whisper/v1.9.5/whisper.xcframework" ]]; then
+if [[ -e "$repo/.whisper/v1.9.6/whisper.xcframework" ]]; then
     echo "FAIL: sha256 mismatch left a framework behind"
     failures=$((failures + 1))
 fi
@@ -54,7 +54,7 @@ printf '#!/bin/sh\nexit 0\n' > "$stubs/cmake"
 chmod +x "$stubs/cmake"
 
 # A matching sha256 gets past verification. The fake tarball then fails to unpack.
-repo="$(make_repo override v1.9.5)"
+repo="$(make_repo override v1.9.6)"
 sha="$(shasum -a 256 "$scratch/fake.tar.gz" | cut -d' ' -f1)"
 output="$(PATH="$stubs:/usr/bin:/bin" WHISPER_TARBALL_URL="file://$scratch/fake.tar.gz" WHISPER_TARBALL_SHA="$sha" \
     "$repo/scripts/bootstrap-whisper.sh" 2>&1)"
@@ -67,12 +67,12 @@ else
 fi
 
 # A failed download stops the script with the download error and leaves no framework behind.
-repo="$(make_repo nodownload v1.9.5)"
+repo="$(make_repo nodownload v1.9.6)"
 output="$(PATH="$stubs:/usr/bin:/bin" WHISPER_TARBALL_URL="file:///nonexistent" \
     "$repo/scripts/bootstrap-whisper.sh" 2>&1)"
 status=$?
 if [[ $status != 0 && "$output" == *"curl:"* && "$output" != *"shasum"* && "$output" != *"sha256 mismatch"* \
-    && ! -e "$repo/.whisper/v1.9.5/whisper.xcframework" ]]; then
+    && ! -e "$repo/.whisper/v1.9.6/whisper.xcframework" ]]; then
     echo "pass: failed download is reported and leaves no framework"
 else
     echo "FAIL: failed download is reported and leaves no framework (status $status, output: $output)"
@@ -80,7 +80,7 @@ else
 fi
 
 # Without cmake the script stops with a clear message.
-repo="$(make_repo nocmake v1.9.5)"
+repo="$(make_repo nocmake v1.9.6)"
 output="$(PATH="/usr/bin:/bin" WHISPER_TARBALL_URL="file:///nonexistent" \
     "$repo/scripts/bootstrap-whisper.sh" 2>&1)"
 check "missing cmake is reported" 1 "error: cmake is required to build whisper.cpp" $? "$output"

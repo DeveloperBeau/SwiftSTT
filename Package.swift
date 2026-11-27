@@ -10,7 +10,7 @@ let upcoming: [SwiftSetting] = [
 ]
 
 // scripts/bootstrap-whisper.sh reads this version. Upstream publishes no xcframework for it.
-let whisperCppVersion = "v1.9.5"
+let whisperCppVersion = "v1.9.6"
 let whisperCppLocalPath = ".whisper/\(whisperCppVersion)/whisper.xcframework"
 
 // A checkout with a local build uses it. A consumer that resolves SwiftSTT by URL never runs
@@ -22,7 +22,7 @@ let whisperCppTarget: Target =
         name: "WhisperCpp",
         url: "https://github.com/DeveloperBeau/SwiftSTT/releases/download/"
             + "whisper-\(whisperCppVersion)/whisper-\(whisperCppVersion)-xcframework.zip",
-        checksum: "08827b6ffcd8f7f6c26a77ef3595be66402d523a89fc9f26287ab8e280f86d1d"
+        checksum: "9b89b0449a0c768703b24b3f41a971ec55f49365dee37820e107b52f5b2b87f2"
     )
 
 let package = Package(

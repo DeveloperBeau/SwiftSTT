@@ -153,7 +153,7 @@ Components:
 
 Three SPM library/executable targets, plus a binary target:
 
-- `WhisperCpp`: the whisper.cpp v1.9.5 xcframework (binary target). A checkout that ran `scripts/bootstrap-whisper.sh` uses the local build in `.whisper/`. Other checkouts download the zip attached to the SwiftSTT release.
+- `WhisperCpp`: the whisper.cpp v1.9.6 xcframework (binary target). A checkout that ran `scripts/bootstrap-whisper.sh` uses the local build in `.whisper/`. Other checkouts download the zip attached to the SwiftSTT release.
 - `SwiftSTTCore`: protocols, value types, and model metadata. Zero Apple framework deps.
 - `SwiftSTTKit`: the engine, audio capture, and downloader. Depends on `WhisperCpp` and ZIPFoundation.
 - `SwiftSTTCLI`: the `swiftstt` executable, built on `SwiftSTTKit` and ArgumentParser.
