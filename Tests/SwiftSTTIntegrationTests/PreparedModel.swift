@@ -34,7 +34,7 @@ struct PreparedModel {
         _ model: WhisperModel,
         using downloader: ModelDownloader
     ) async throws -> PreparedModel {
-        await lock.acquire()
+        try await lock.acquire()
         do {
             let prepared = try await prepareAlone(model, using: downloader)
             await lock.release()

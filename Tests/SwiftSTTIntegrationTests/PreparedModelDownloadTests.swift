@@ -50,22 +50,28 @@ struct PreparedModelDownloadTests {
         defer { try? FileManager.default.removeItem(at: cache) }
         let cache = self.cache
 
-        let results = try await withThrowingTaskGroup(of: PreparedModel.self) { group in
+        // Each result is kept, thrown or not, so the request count is checked either way.
+        let results = await withTaskGroup(of: Result<PreparedModel, any Error>.self) { group in
             for _ in 0..<2 {
                 group.addTask {
                     let downloader = ModelDownloader(
                         cacheDirectory: cache, urlSession: StubURLProtocol.makeSession())
-                    return try await PreparedModel.prepare(.tiny, using: downloader)
+                    do {
+                        return .success(try await PreparedModel.prepare(.tiny, using: downloader))
+                    } catch {
+                        return .failure(error)
+                    }
                 }
             }
-            return try await group.reduce(into: [PreparedModel]()) { $0.append($1) }
+            return await group.reduce(into: [Result<PreparedModel, any Error>]()) { $0.append($1) }
         }
 
         let modelRequests = StubURLProtocol.requestCount(for: "ggml-tiny.bin")
         print("concurrent prepares: requests \(StubURLProtocol.allRequestCounts)")
-        #expect(results.count == 2)
         #expect(modelRequests == 1)
-        #expect(results.filter(\.wasDownloaded).count == 1)
+        let prepared = try results.map { try $0.get() }
+        #expect(prepared.count == 2)
+        #expect(prepared.filter(\.wasDownloaded).count == 1)
         #expect(try Data(contentsOf: modelFile()) == Data("stub tiny model bytes".utf8))
     }
 }
