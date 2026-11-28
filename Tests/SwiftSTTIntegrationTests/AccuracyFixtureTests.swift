@@ -59,11 +59,12 @@ extension IntegrationRun {
 
         @Test(
             "Tiny model transcribes the committed fixture within the expected word error rate",
-            .timeLimit(.minutes(10))
+            .timeLimit(.minutes(10)),
+            .requiresFixtureScored
         )
         func tinyModelTranscribesFixture() async throws {
             // The confirmation fails the test if the body returns before scoring, so every
-            // check sits inside it.
+            // check sits inside it. The trait also fails it when the body returns above it.
             try await confirmation("fixture decoded and scored", expectedCount: 1) { scored in
                 #expect(FileManager.default.fileExists(atPath: prepared.bundle.ggmlModelURL.path))
                 #expect(prepared.wasDownloaded == !modelExistedBeforeInit)
@@ -106,6 +107,7 @@ extension IntegrationRun {
                     "WER \(percent)% is not below the threshold. Hypothesis: \(hypothesis)"
                 )
                 scored()
+                FixtureScoredCheck.markScored()
             }
         }
 
