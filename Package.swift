@@ -89,6 +89,7 @@ let package = Package(
         .testTarget(
             name: "SwiftSTTIntegrationTests",
             dependencies: ["SwiftSTTKit"],
+            resources: [.copy("Fixtures")],
             swiftSettings: upcoming
         ),
     ],
