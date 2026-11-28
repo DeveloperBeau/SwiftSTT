@@ -6,8 +6,9 @@ import Testing
 /// Parent of the suites that use the real model cache.
 ///
 /// Its suites run one after another, never at the same time, so they never download
-/// into the same cache at once.
-@Suite("Integration run", .serialized)
+/// into the same cache at once. The time limit covers each suite's `init` as well as
+/// its test, so a stalled model download fails by name.
+@Suite("Integration run", .serialized, .timeLimit(.minutes(10)))
 enum IntegrationRun {
 
     /// Whether the model file and its `.complete` marker are in the default cache.
