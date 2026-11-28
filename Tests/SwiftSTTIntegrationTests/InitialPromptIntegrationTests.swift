@@ -32,6 +32,50 @@ struct InitialPromptIntegrationTests {
         #expect(text == Self.noPromptGolden)
     }
 
+    @Test("A prompt naming Zoltan Szabo changes the decoded spelling to the prompt's")
+    func promptCarriesProperNounSpelling() async throws {
+        let context = try await tinyContext()
+        let samples = try PromptFixture.samples()
+
+        let text = try await decodedText(
+            context,
+            samples,
+            DecodingOptions(initialPrompt: "Zoltan Szabo, Kubernetes.")
+        )
+
+        #expect(text == " Please ask Zoltan Szabo to review the Kubernetes cluster.")
+        #expect(text != Self.noPromptGolden)
+    }
+
+    @Test("An explicit nil prompt and an empty prompt both decode to the no-prompt golden text")
+    func nilAndEmptyPromptsMatchGolden() async throws {
+        let context = try await tinyContext()
+        let samples = try PromptFixture.samples()
+
+        let explicitNil = try await decodedText(
+            context, samples, DecodingOptions(initialPrompt: nil))
+        let empty = try await decodedText(context, samples, DecodingOptions(initialPrompt: ""))
+
+        #expect(explicitNil == Self.noPromptGolden)
+        #expect(empty == Self.noPromptGolden)
+    }
+
+    @Test("A prompt does not carry into the next decode on the same context")
+    func promptDoesNotLeakIntoNextDecode() async throws {
+        let context = try await tinyContext()
+        let samples = try PromptFixture.samples()
+
+        let prompted = try await decodedText(
+            context,
+            samples,
+            DecodingOptions(initialPrompt: "Zoltan Szabo, Kubernetes.")
+        )
+        let after = try await decodedText(context, samples, DecodingOptions())
+
+        #expect(prompted == " Please ask Zoltan Szabo to review the Kubernetes cluster.")
+        #expect(after == Self.noPromptGolden)
+    }
+
     // MARK: - Helpers
 
     private func decodedText(
