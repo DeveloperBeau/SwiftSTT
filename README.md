@@ -178,6 +178,8 @@ The integration suite downloads the tiny model (~75 MB on first run) and exercis
 
 MIT. See [LICENSE](LICENSE).
 
+Third-party notices (whisper.cpp and ggml) are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide. In short:
