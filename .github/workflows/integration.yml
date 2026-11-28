@@ -38,5 +38,16 @@ jobs:
       - name: Swift version
         run: swift --version
 
+      - name: Cache whisper.xcframework
+        uses: actions/cache@v4
+        with:
+          path: .whisper
+          key: whisper-${{ runner.os }}-${{ hashFiles('scripts/bootstrap-whisper.sh', 'Package.swift') }}
+
+      - name: Bootstrap whisper.xcframework
+        run: |
+          command -v cmake >/dev/null || brew install cmake
+          scripts/bootstrap-whisper.sh
+
       - name: Run integration tests
         run: swift test --filter SwiftSTTIntegrationTests

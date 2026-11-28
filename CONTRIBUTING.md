@@ -30,7 +30,7 @@ Requirements:
 - Swift 6.4 toolchain
 - CMake (`brew install cmake`), to build whisper.cpp
 
-Clone and build. The bootstrap script builds `whisper.xcframework` into the ignored `.whisper/` folder once. When the framework for the pinned version is present, the script does nothing. SwiftPM caches the manifest result. If you add or remove `.whisper/` after a build, run `swift package purge-cache`. Run `scripts/test-bootstrap-whisper.sh` after you change the script.
+Clone and build. The bootstrap script builds `whisper.xcframework` into the ignored `.whisper/` folder once. When the framework for the pinned version is present, the script does nothing. SwiftPM caches the manifest result. If you add or remove `.whisper/` after a build, run `swift package purge-cache`. Run `scripts/test-bootstrap-whisper.sh` after you change the script. The CI workflows run the same script before they build, so they do not need the release zip.
 
 ```bash
 git clone https://github.com/DeveloperBeau/SwiftSTT.git
