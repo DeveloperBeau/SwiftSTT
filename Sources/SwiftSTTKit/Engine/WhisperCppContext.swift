@@ -116,18 +116,14 @@ public actor WhisperCppContext {
             params.progress_callback_user_data = boxPointer
         }
 
-        // `language` needs a stable C string for the duration of the call.
-        let languageCString: ContiguousArray<CChar>? = options.language.map { lang in
-            ContiguousArray(lang.utf8CString)
-        }
-
+        // `language` and `initial_prompt` point at C strings that live only inside the
+        // closure, so the whole synchronous `whisper_full` call runs inside it.
         let rc = withExtendedLifetime(progressBox) {
             samples.withUnsafeBufferPointer { audioPtr -> Int32 in
-                languageCString.withCStringOrNil { langPtr in
-                    params.language = langPtr
-                    return whisper_full(
+                WhisperCppParams.withCStrings(from: options, appliedTo: params) { decoderParams in
+                    whisper_full(
                         context,
-                        params,
+                        decoderParams,
                         audioPtr.baseAddress,
                         Int32(audioPtr.count)
                     )
@@ -156,20 +152,6 @@ public actor WhisperCppContext {
             )
         }
         return result
-    }
-}
-
-extension Optional where Wrapped == ContiguousArray<CChar> {
-    /// Borrow a C pointer to the stored string, or `nil`, for the body's lifetime.
-    fileprivate func withCStringOrNil<R>(_ body: (UnsafePointer<CChar>?) -> R) -> R {
-        switch self {
-        case .none:
-            return body(nil)
-        case .some(let array):
-            return array.withUnsafeBufferPointer { buf in
-                body(buf.baseAddress)
-            }
-        }
     }
 }
 
