@@ -20,7 +20,7 @@ fi
 
 # sha256 of the GitHub source tarball for each supported version.
 case "$version" in
-    v1.9.5) pinned_sha="ff1a9053feb509ff9d7729703355541ae9690073a6b1c40eb692c962e0dc1720" ;;
+    v1.9.6) pinned_sha="7ab15dc88022d2425ad94dcffd8abbf1b6d7018089b4e48d6b40780738e0b445" ;;
     *)
         echo "error: no pinned tarball sha256 for $version, add one to $0" >&2
         exit 1

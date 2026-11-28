@@ -25,7 +25,7 @@ public actor AVMicrophoneInput: AudioInputProvider {
     private var isCapturing: Bool = false
 
     #if os(iOS)
-    private var interruptionObserver: NSObjectProtocol?
+    private var interruptionObserver: (any NSObjectProtocol)?
     #endif
 
     /// Creates a new AVMicrophoneInput with the supplied values.
