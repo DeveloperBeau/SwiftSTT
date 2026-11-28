@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DocC article: `Background-Downloads` with iOS integration walkthrough.
 - Integration test target `SwiftSTTIntegrationTests` (gated by
   `SWIFTSTT_RUN_INTEGRATION=1`).
+- Accuracy fixture test: the tiny model transcribes whisper.cpp's `jfk.wav` sample and
+  the word error rate against a hand-written transcript must stay below 10%.
 - GitHub Actions workflows: `ci.yml`, `lint.yml`, `integration.yml`.
 
 ### Changed
