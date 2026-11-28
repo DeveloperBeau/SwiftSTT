@@ -4,26 +4,6 @@ import SwiftSTTCore
 import SwiftSTTKit
 import Testing
 
-/// Locations of the committed accuracy fixture.
-private enum AccuracyFixture {
-    static var audioURL: URL {
-        get throws {
-            try #require(
-                Bundle.module.url(
-                    forResource: "jfk", withExtension: "wav", subdirectory: "Fixtures"))
-        }
-    }
-
-    static var expectedTranscript: String {
-        get throws {
-            let url = try #require(
-                Bundle.module.url(
-                    forResource: "jfk", withExtension: "txt", subdirectory: "Fixtures"))
-            return try String(contentsOf: url, encoding: .utf8)
-        }
-    }
-}
-
 /// Checks the committed fixture is in the format the file input expects.
 ///
 /// Runs in the default gate. It reads only the committed file.
@@ -59,51 +39,63 @@ struct AccuracyFixtureFormatTests {
 )
 struct AccuracyFixtureTests {
 
-    /// The tiny model's word error rate on `jfk.wav` must stay below this.
+    /// The tiny model, cached or downloaded before the test body runs.
     ///
-    /// The reference has 22 words, so 0.10 allows at most two word errors.
-    static let wordErrorRateThreshold = 0.10
+    /// Set up here so a missing model is downloaded or fails the test. The body has no
+    /// way to see an uncached model.
+    private let prepared: PreparedModel
+
+    init() async throws {
+        // The threshold is set for the tiny model, so this suite ignores
+        // SWIFTSTT_INTEGRATION_MODEL.
+        prepared = try await PreparedModel.prepare(.tiny, using: ModelDownloader())
+    }
 
     @Test(
         "Tiny model transcribes the committed fixture within the expected word error rate",
         .timeLimit(.minutes(10))
     )
     func tinyModelTranscribesFixture() async throws {
-        // The threshold is set for the tiny model, so this test ignores
-        // SWIFTSTT_INTEGRATION_MODEL.
-        let model = WhisperModel.tiny
-        let downloader = ModelDownloader()
-        if await !downloader.isDownloaded(model) {
-            let stream = try await downloader.download(model)
-            for try await progress in stream {
-                if progress.phase == .complete { break }
-            }
+        #expect(FileManager.default.fileExists(atPath: prepared.bundle.ggmlModelURL.path))
+
+        // The confirmation fails the test if the body returns before scoring.
+        try await confirmation("fixture decoded and scored", expectedCount: 1) { scored in
+            let context = try WhisperCppContext(ggmlModelURL: prepared.bundle.ggmlModelURL)
+
+            let samples = try await readAllSamples(at: try AccuracyFixture.audioURL)
+            #expect(samples.count == 176_000)
+
+            var options = DecodingOptions.default
+            options.language = "en"
+            let segments = try await context.transcribe(samples: samples, options: options)
+            try #require(!segments.isEmpty, "Decoding produced no segments")
+
+            let hypothesis = segments.map(\.text).joined(separator: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            try #require(!hypothesis.isEmpty, "Decoding produced no text")
+
+            let score = try AccuracyFixtureScore(hypothesis: hypothesis)
+            let wer = score.wordErrorRate
+            let percent = (wer.rate * 100).formatted(.number.precision(.fractionLength(1)))
+            print(
+                "jfk.wav tiny model WER: \(percent)% (\(wer.errors) errors in"
+                    + " \(wer.referenceWordCount) words, threshold"
+                    + " \(Int(AccuracyFixtureScore.wordErrorRateThreshold * 100))%)"
+            )
+            print("jfk.wav hypothesis: \(hypothesis)")
+
+            #expect(
+                score.reference
+                    == "And so my fellow Americans, ask not what your country can do for you,"
+                    + " ask what you can do for your country.\n"
+            )
+            #expect(wer.referenceWordCount == 22)
+            #expect(
+                score.meetsThreshold,
+                "WER \(percent)% is not below the threshold. Hypothesis: \(hypothesis)"
+            )
+            scored()
         }
-        let bundle = try await downloader.bundle(for: model)
-        let context = try WhisperCppContext(ggmlModelURL: bundle.ggmlModelURL)
-
-        let samples = try await readAllSamples(at: try AccuracyFixture.audioURL)
-        #expect(samples.count == 176_000)
-
-        var options = DecodingOptions.default
-        options.language = "en"
-        let segments = try await context.transcribe(samples: samples, options: options)
-
-        let hypothesis = segments.map(\.text).joined(separator: " ")
-        let reference = try AccuracyFixture.expectedTranscript
-        let wer = WordErrorRate(reference: reference, hypothesis: hypothesis)
-        let percent = (wer.rate * 100).formatted(.number.precision(.fractionLength(1)))
-        print(
-            "jfk.wav tiny model WER: \(percent)% (\(wer.errors) errors in"
-                + " \(wer.referenceWordCount) words, threshold"
-                + " \(Int(Self.wordErrorRateThreshold * 100))%)"
-        )
-        print("jfk.wav hypothesis: \(hypothesis.trimmingCharacters(in: .whitespaces))")
-
-        #expect(
-            wer.rate < Self.wordErrorRateThreshold,
-            "WER \(percent)% is not below the threshold. Hypothesis: \(hypothesis)"
-        )
     }
 
     /// Reads the file through the public file input at the 16 kHz rate the context takes.
