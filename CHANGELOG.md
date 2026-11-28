@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Integration test target `SwiftSTTIntegrationTests` (gated by
   `SWIFTSTT_RUN_INTEGRATION=1`).
 - GitHub Actions workflows: `ci.yml`, `lint.yml`, `integration.yml`.
+- `DecodingOptions.initialPrompt`, passed to whisper.cpp as `initial_prompt`. It defaults to
+  `nil`, which decodes exactly as before. The caller trims and bounds the text.
 
 ### Changed
 - whisper.cpp is now v1.9.6. `scripts/bootstrap-whisper.sh` builds the xcframework

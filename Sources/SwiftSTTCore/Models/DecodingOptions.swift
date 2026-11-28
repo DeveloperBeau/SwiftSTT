@@ -123,6 +123,21 @@ public struct DecodingOptions: Sendable, Equatable {
     /// keys are silently ignored.
     public var logitBias: [Int: Float]
 
+    /// Text the decoder reads as earlier context before the audio, such as names or terms the speech is likely to contain.
+    ///
+    /// `nil` (the default) sends no prompt. The caller owns trimming and bounding this text.
+    /// The library never trims or normalises it and passes the bytes to whisper.cpp as they are.
+    /// An unbounded or unrelated prompt is a known whisper cause of hallucinated text and of the
+    /// prompt being echoed back in the transcript.
+    ///
+    /// whisper.cpp v1.9.6 keeps only the last 223 tokens of the prompt (half of the model's
+    /// 448-token text context, less one marker token) and drops the earlier tokens without an error.
+    /// It also ignores the prompt on any attempt decoded at a temperature of `0.5` or above.
+    /// An empty string sends no prompt, the same as `nil`.
+    /// The text crosses a C boundary, so an embedded NUL character ends it and the bytes after the
+    /// NUL never reach the decoder.
+    public var initialPrompt: String?
+
     /// Creates a new DecodingOptions with the supplied values.
     public init(
         language: String? = nil,
@@ -139,7 +154,8 @@ public struct DecodingOptions: Sendable, Equatable {
         compressionRatioThreshold: Float = 2.4,
         topP: Float = 1.0,
         repetitionPenalty: Float = 1.0,
-        logitBias: [Int: Float] = [:]
+        logitBias: [Int: Float] = [:],
+        initialPrompt: String? = nil
     ) {
         self.language = language
         self.task = task
@@ -156,6 +172,7 @@ public struct DecodingOptions: Sendable, Equatable {
         self.topP = topP
         self.repetitionPenalty = repetitionPenalty
         self.logitBias = logitBias
+        self.initialPrompt = initialPrompt
     }
 
     /// Sensible defaults for English transcription with beam search.
