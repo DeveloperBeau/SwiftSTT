@@ -38,6 +38,7 @@ extension IntegrationRun {
             let model = Self.pickModel()
             modelExistedBeforeInit = IntegrationRun.modelIsInDefaultCache(model)
             prepared = try await PreparedModel.prepare(model, using: ModelDownloader())
+            print("Integration: \(prepared.label)")
         }
 
         @Test("Tiny model downloads and bundle resolves ggml URL")

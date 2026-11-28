@@ -14,7 +14,7 @@ struct PreparedModel {
     /// Whether this call downloaded the model, as opposed to finding it cached.
     let wasDownloaded: Bool
 
-    /// The line printed for the run log, for example `tiny model: downloaded`.
+    /// The run log line, for example `tiny model: downloaded`.
     var label: String {
         "\(bundle.model.rawValue) model: \(wasDownloaded ? "downloaded" : "cached")"
     }
@@ -38,7 +38,6 @@ struct PreparedModel {
         do {
             let prepared = try await prepareAlone(model, using: downloader)
             await lock.release()
-            print(prepared.label)
             return prepared
         } catch {
             await lock.release()

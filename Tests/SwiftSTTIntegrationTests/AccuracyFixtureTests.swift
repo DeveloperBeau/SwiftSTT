@@ -55,6 +55,7 @@ extension IntegrationRun {
             // SWIFTSTT_INTEGRATION_MODEL.
             modelExistedBeforeInit = IntegrationRun.modelIsInDefaultCache(.tiny)
             prepared = try await PreparedModel.prepare(.tiny, using: ModelDownloader())
+            print("Accuracy fixture: \(prepared.label)")
         }
 
         @Test(
