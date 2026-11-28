@@ -14,11 +14,39 @@ struct PreparedModel {
     /// Whether this call downloaded the model, as opposed to finding it cached.
     let wasDownloaded: Bool
 
+    /// The line printed for the run log, for example `tiny model: downloaded`.
+    var label: String {
+        "\(bundle.model.rawValue) model: \(wasDownloaded ? "downloaded" : "cached")"
+    }
+
+    /// Serialises every preparation in this process.
+    ///
+    /// Two callers with their own downloaders would otherwise both download into the
+    /// same cache, and one could remove the file the other is about to use.
+    private static let lock = AsyncLock()
+
     /// Uses the cached model, or downloads it when it is not cached.
     ///
-    /// A failed download throws its error. A download that ends without the model on
-    /// disk throws `modelFileMissing` from the bundle lookup.
+    /// Callers run one at a time, so a caller that waited finds the model cached and
+    /// makes no request. A failed download throws its error. A download that ends
+    /// without the model on disk throws `modelFileMissing` from the bundle lookup.
     static func prepare(
+        _ model: WhisperModel,
+        using downloader: ModelDownloader
+    ) async throws -> PreparedModel {
+        await lock.acquire()
+        do {
+            let prepared = try await prepareAlone(model, using: downloader)
+            await lock.release()
+            print(prepared.label)
+            return prepared
+        } catch {
+            await lock.release()
+            throw error
+        }
+    }
+
+    private static func prepareAlone(
         _ model: WhisperModel,
         using downloader: ModelDownloader
     ) async throws -> PreparedModel {
@@ -30,7 +58,6 @@ struct PreparedModel {
             }
         }
         let bundle = try await downloader.bundle(for: model)
-        print("\(model.rawValue) model: \(wasCached ? "cached" : "downloaded")")
         return PreparedModel(bundle: bundle, wasDownloaded: !wasCached)
     }
 }

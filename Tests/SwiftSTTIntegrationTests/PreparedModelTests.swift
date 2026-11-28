@@ -25,6 +25,7 @@ struct PreparedModelTests {
             .tiny, using: ModelDownloader(cacheDirectory: cache))
 
         #expect(!prepared.wasDownloaded)
+        #expect(prepared.label == "tiny model: cached")
         #expect(
             prepared.bundle.ggmlModelURL.standardizedFileURL.path
                 == cache.standardizedFileURL.path + "/tiny/tiny.bin")
