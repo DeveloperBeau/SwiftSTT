@@ -24,6 +24,17 @@ struct WordErrorRateTests {
         #expect(wer == WordErrorRate(errors: 0, referenceWordCount: 9))
     }
 
+    @Test("Every punctuation mark is dropped, so an apostrophe joins its word")
+    func everyPunctuationMarkDropped() {
+        // Hand count: "what's..." becomes "whats", one substitution for "what". The
+        // other marks, and the lone double quote, leave no word behind.
+        let wer = WordErrorRate(
+            reference: reference,
+            hypothesis: "Ask not! What's... your country? can do for you; \""
+        )
+        #expect(wer == WordErrorRate(errors: 1, referenceWordCount: 9))
+    }
+
     @Test("One substituted word scores one error in nine")
     func oneSubstitution() {
         let wer = WordErrorRate(
