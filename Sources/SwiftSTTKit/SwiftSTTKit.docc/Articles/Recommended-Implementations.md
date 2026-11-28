@@ -185,5 +185,6 @@ The current beam-search implementation re-prefills the KV cache for every beam a
 | `withoutTimestamps` | `true`  | Set to `false` whenever you want to call `parseSegments`. |
 | `suppressBlank`     | `true`  | Leave on. Disabling lets silence emit text. |
 | `suppressTokens`    | `[]`    | Add token IDs you want banned (e.g. profanity). |
+| `initialPrompt`     | `nil`   | Set to a short phrase with names or terms the audio likely contains. Trim and bound it yourself. whisper.cpp keeps only the last 223 tokens. |
 
 `temperature > 0` and `beamSize > 1` are mutually exclusive. The decoder throws ``SwiftSTTError/invalidDecodingOption(_:)`` if you set both.
